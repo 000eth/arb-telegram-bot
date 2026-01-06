@@ -490,13 +490,15 @@ def register_callback_handlers(dp: Dispatcher):
         # ВАЖНО: Устанавливаем pending_action ПЕРЕД отправкой сообщения
         s.pending_action = action_type
         print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{action_type}'")
+        print(f"DEBUG: Проверка - s.pending_action = {s.pending_action}")
         
         if action_type == "position":
-            text = (
-                "💰 Объём позиции (ручной ввод)\n\n"
-                "Введи объём позиции в долларах.\n"
-                "Пример: 1000 или 1,000 или 1000$"
-            )
+        text = (
+            "💰 Объём позиции (ручной ввод)\n\n"
+            "Введи объём позиции в долларах.\n"
+            "Пример: 1000 или 1,000 или 1000$\n\n"
+            f"DEBUG: pending_action установлен в '{s.pending_action}'"
+        )
         elif action_type == "spread":
             text = (
                 "📈 Минимальный спред (ручной ввод)\n\n"
