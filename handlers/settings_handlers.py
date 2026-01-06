@@ -2,13 +2,17 @@ from aiogram.types import Message
 from models import UserSettings
 from keyboards import get_main_menu_reply_keyboard
 from utils.coin_normalizer import normalize_coin_input
+import re
 
 
 async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
     try:
-        value = float(raw_value.replace(",", "."))
-    except ValueError:
-        await message.answer("Не получилось прочитать число. Пример: 2.5")
+        # Убираем все символы кроме цифр и точки/запятой
+        cleaned = re.sub(r'[^\d.,]', '', raw_value)
+        cleaned = cleaned.replace(',', '.')
+        value = float(cleaned)
+    except (ValueError, AttributeError):
+        await message.answer("Не получилось прочитать число. Пример: 2.5 или 2,5")
         return
 
     if value <= 0:
@@ -22,9 +26,12 @@ async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
 
 async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
     try:
-        value = float(raw_value.replace(",", "."))
-    except ValueError:
-        await message.answer("Не получилось прочитать число. Пример: 20")
+        # Убираем все символы кроме цифр и точки/запятой
+        cleaned = re.sub(r'[^\d.,]', '', raw_value)
+        cleaned = cleaned.replace(',', '.')
+        value = float(cleaned)
+    except (ValueError, AttributeError):
+        await message.answer("Не получилось прочитать число. Пример: 20 или 20,5")
         return
 
     if value <= 0:
@@ -37,11 +44,30 @@ async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
 
 
 async def apply_position(message: Message, s: UserSettings, raw_value: str):
-    """Применяет объём позиции (без плеча)"""
+    """Применяет объём позиции - понимает разные форматы: 20000, 20,000, 20.000, 20000$, 20,000$ и т.д."""
     try:
-        value = float(raw_value.replace(",", "."))
-    except ValueError:
-        await message.answer("Не получилось прочитать число. Пример: 1000")
+        # Убираем все символы кроме цифр и точки/запятой (включая $, пробелы и т.д.)
+        cleaned = re.sub(r'[^\d.,]', '', raw_value.strip())
+        # Заменяем запятую на точку (для десятичных дробей)
+        # Но если запятая используется как разделитель тысяч (20,000), убираем её
+        if ',' in cleaned and '.' in cleaned:
+            # Есть и точка, и запятая - запятая это разделитель тысяч
+            cleaned = cleaned.replace(',', '')
+        elif ',' in cleaned:
+            # Только запятая - проверяем, разделитель тысяч или десятичная
+            parts = cleaned.split(',')
+            if len(parts) == 2 and len(parts[1]) <= 2:
+                # Похоже на десятичную дробь (20,5)
+                cleaned = cleaned.replace(',', '.')
+            else:
+                # Похоже на разделитель тысяч (20,000)
+                cleaned = cleaned.replace(',', '')
+        
+        value = float(cleaned)
+        print(f"DEBUG apply_position: raw={raw_value}, cleaned={cleaned}, value={value}")
+    except (ValueError, AttributeError) as e:
+        print(f"DEBUG apply_position ERROR: {e}, raw_value={raw_value}")
+        await message.answer("Не получилось прочитать число. Пример: 1000 или 1,000 или 1000$")
         return
 
     if value <= 0:
@@ -50,6 +76,7 @@ async def apply_position(message: Message, s: UserSettings, raw_value: str):
 
     s.position_size_usd = value
     s.pending_action = None
+    print(f"DEBUG apply_position SUCCESS: установлен объём {s.position_size_usd}$")
     await message.answer(
         f"✅ Объём позиции установлен: {s.position_size_usd}$",
         reply_markup=get_main_menu_reply_keyboard()
@@ -58,8 +85,10 @@ async def apply_position(message: Message, s: UserSettings, raw_value: str):
 
 async def apply_interval(message: Message, s: UserSettings, raw_value: str):
     try:
-        value = int(raw_value)
-    except ValueError:
+        # Убираем все символы кроме цифр
+        cleaned = re.sub(r'[^\d]', '', raw_value.strip())
+        value = int(cleaned)
+    except (ValueError, AttributeError):
         await message.answer("Не получилось прочитать целое число секунд. Пример: 60 (или 0 для режима 'Постоянно')")
         return
 
