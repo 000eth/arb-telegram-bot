@@ -87,31 +87,54 @@ async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[flo
                 # Парсим ответ Hibachi API
                 if isinstance(data, dict):
                     # Приоритет: tradePrice (последняя цена сделки) > markPrice (маркировочная) > среднее bid/ask
-                    if "tradePrice" in data:
-                        price = float(data["tradePrice"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через tradePrice = {price}")
-                        _price_cache[cache_key] = (price, datetime.now())
-                        return price
-                    elif "markPrice" in data:
-                        price = float(data["markPrice"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через markPrice = {price}")
-                        _price_cache[cache_key] = (price, datetime.now())
-                        return price
-                    elif "askPrice" in data and "bidPrice" in data:
-                        # Используем среднее между bid и ask
-                        ask = float(data["askPrice"])
-                        bid = float(data["bidPrice"])
-                        price = (ask + bid) / 2.0
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через среднее bid/ask = {price}")
-                        _price_cache[cache_key] = (price, datetime.now())
-                        return price
-                    elif "spotPrice" in data:
-                        price = float(data["spotPrice"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через spotPrice = {price}")
-                        _price_cache[cache_key] = (price, datetime.now())
-                        return price
-                    else:
-                        print(f"DEBUG Hibachi: ⚠️ Не найдено поле с ценой. Доступные ключи: {list(data.keys())}")
+                    # ВАЖНО: Проверяем на None перед преобразованием в float
+                    if "tradePrice" in data and data["tradePrice"] is not None:
+                        try:
+                            price = float(data["tradePrice"])
+                            print(f"DEBUG Hibachi: ✅ Найдена цена через tradePrice = {price}")
+                            _price_cache[cache_key] = (price, datetime.now())
+                            return price
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования tradePrice: {e}")
+                    
+                    if "markPrice" in data and data["markPrice"] is not None:
+                        try:
+                            price = float(data["markPrice"])
+                            print(f"DEBUG Hibachi: ✅ Найдена цена через markPrice = {price}")
+                            _price_cache[cache_key] = (price, datetime.now())
+                            return price
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования markPrice: {e}")
+                    
+                    if "askPrice" in data and "bidPrice" in data:
+                        ask = data["askPrice"]
+                        bid = data["bidPrice"]
+                        if ask is not None and bid is not None:
+                            try:
+                                ask_float = float(ask)
+                                bid_float = float(bid)
+                                price = (ask_float + bid_float) / 2.0
+                                print(f"DEBUG Hibachi: ✅ Найдена цена через среднее bid/ask = {price}")
+                                _price_cache[cache_key] = (price, datetime.now())
+                                return price
+                            except (ValueError, TypeError) as e:
+                                print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования bid/ask: {e}")
+                    
+                    if "spotPrice" in data and data["spotPrice"] is not None:
+                        try:
+                            price = float(data["spotPrice"])
+                            print(f"DEBUG Hibachi: ✅ Найдена цена через spotPrice = {price}")
+                            _price_cache[cache_key] = (price, datetime.now())
+                            return price
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования spotPrice: {e}")
+                    
+                    print(f"DEBUG Hibachi: ⚠️ Все поля цен равны None или отсутствуют. Доступные ключи: {list(data.keys())}")
+            elif response.status == 404:
+                # Монета не найдена на Hibachi - это нормально, просто возвращаем None
+                text = await response.text()
+                print(f"DEBUG Hibachi: ℹ️ Монета {symbol} не найдена на Hibachi (404). Response: {text[:200]}")
+                return None
             else:
                 print(f"DEBUG Hibachi: ❌ Ошибка HTTP {response.status}")
                 text = await response.text()
