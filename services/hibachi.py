@@ -1,7 +1,6 @@
 """
 Hibachi API - получение цен
 Документация: https://api-doc.hibachi.xyz/
-GitHub SDK: https://github.com/hibachi-xyz/hibachi_sdk
 """
 import aiohttp
 import asyncio
@@ -48,7 +47,7 @@ async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[flo
         # Формат символа для Hibachi: BTC/USDT-P
         symbol_formatted = f"{symbol}/USDT-P"
         
-        # ПРАВИЛЬНЫЙ endpoint: /market/data/prices?symbol=
+        # Endpoint: /market/data/prices?symbol=
         url = "https://data-api.hibachi.xyz/market/data/prices"
         params = {"symbol": symbol_formatted}
         
@@ -80,89 +79,39 @@ async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[flo
                 import json
                 try:
                     data = json.loads(text)
-                    print(f"DEBUG Hibachi: Parsed JSON type = {type(data)}")
-                    if isinstance(data, dict):
-                        print(f"DEBUG Hibachi: JSON keys = {list(data.keys())}")
-                    elif isinstance(data, list):
-                        print(f"DEBUG Hibachi: List length = {len(data)}")
+                    print(f"DEBUG Hibachi: Parsed JSON keys = {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
                 except Exception as e:
                     print(f"DEBUG Hibachi: Ошибка парсинга JSON: {e}")
                     return None
                 
-                # Пробуем разные варианты структуры ответа
+                # Парсим ответ Hibachi API
                 if isinstance(data, dict):
-                    # Вариант 1: data.price или data.lastPrice
-                    if "price" in data:
-                        price = float(data["price"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через data.price = {price}")
+                    # Приоритет: tradePrice (последняя цена сделки) > markPrice (маркировочная) > среднее bid/ask
+                    if "tradePrice" in data:
+                        price = float(data["tradePrice"])
+                        print(f"DEBUG Hibachi: ✅ Найдена цена через tradePrice = {price}")
                         _price_cache[cache_key] = (price, datetime.now())
                         return price
-                    if "lastPrice" in data:
-                        price = float(data["lastPrice"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через data.lastPrice = {price}")
+                    elif "markPrice" in data:
+                        price = float(data["markPrice"])
+                        print(f"DEBUG Hibachi: ✅ Найдена цена через markPrice = {price}")
                         _price_cache[cache_key] = (price, datetime.now())
                         return price
-                    if "last" in data:
-                        price = float(data["last"])
-                        print(f"DEBUG Hibachi: ✅ Найдена цена через data.last = {price}")
+                    elif "askPrice" in data and "bidPrice" in data:
+                        # Используем среднее между bid и ask
+                        ask = float(data["askPrice"])
+                        bid = float(data["bidPrice"])
+                        price = (ask + bid) / 2.0
+                        print(f"DEBUG Hibachi: ✅ Найдена цена через среднее bid/ask = {price}")
                         _price_cache[cache_key] = (price, datetime.now())
                         return price
-                    # Вариант 2: data.data.price
-                    if "data" in data and isinstance(data["data"], dict):
-                        if "price" in data["data"]:
-                            price = float(data["data"]["price"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через data.data.price = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                        if "lastPrice" in data["data"]:
-                            price = float(data["data"]["lastPrice"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через data.data.lastPrice = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                    # Вариант 3: data.result.price
-                    if "result" in data and isinstance(data["result"], dict):
-                        if "price" in data["result"]:
-                            price = float(data["result"]["price"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через data.result.price = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                    print(f"DEBUG Hibachi: ⚠️ Не найдено поле с ценой. Доступные ключи: {list(data.keys())}")
-                elif isinstance(data, list) and len(data) > 0:
-                    # Если ответ - список, берём первый элемент
-                    first_item = data[0]
-                    if isinstance(first_item, dict):
-                        if "price" in first_item:
-                            price = float(first_item["price"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через list[0].price = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                        if "lastPrice" in first_item:
-                            price = float(first_item["lastPrice"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через list[0].lastPrice = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-            elif response.status == 404:
-                print(f"DEBUG Hibachi: ❌ 404 - Endpoint не найден. Пробуем альтернативные варианты...")
-                # Пробуем альтернативные endpoints
-                alternative_urls = [
-                    f"https://data-api.hibachi.xyz/market/ticker/{symbol_formatted}",
-                    f"https://data-api.hibachi.xyz/market/prices?symbol={symbol_formatted}",
-                    f"https://api.hibachi.xyz/market/data/prices?symbol={symbol_formatted}",
-                ]
-                for alt_url in alternative_urls:
-                    print(f"DEBUG Hibachi: Пробуем альтернативный URL: {alt_url}")
-                    try:
-                        async with session.get(alt_url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as alt_response:
-                            if alt_response.status == 200:
-                                alt_data = await alt_response.json()
-                                print(f"DEBUG Hibachi: ✅ Альтернативный URL сработал! Response: {alt_data}")
-                                # Парсим ответ аналогично
-                                if isinstance(alt_data, dict) and "price" in alt_data:
-                                    price = float(alt_data["price"])
-                                    _price_cache[cache_key] = (price, datetime.now())
-                                    return price
-                    except:
-                        continue
+                    elif "spotPrice" in data:
+                        price = float(data["spotPrice"])
+                        print(f"DEBUG Hibachi: ✅ Найдена цена через spotPrice = {price}")
+                        _price_cache[cache_key] = (price, datetime.now())
+                        return price
+                    else:
+                        print(f"DEBUG Hibachi: ⚠️ Не найдено поле с ценой. Доступные ключи: {list(data.keys())}")
             else:
                 print(f"DEBUG Hibachi: ❌ Ошибка HTTP {response.status}")
                 text = await response.text()
