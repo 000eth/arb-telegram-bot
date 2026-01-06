@@ -36,28 +36,23 @@ dp = Dispatcher()
 
 @dataclass
 class UserSettings:
-    coins: list[str] = field(default_factory=list)   # список монет/пар
-    min_spread: float = 2.0                          # минимальный спред в %
-    min_profit_usd: float = 10.0                     # минимальный профит в $
-    sources: list[str] = field(default_factory=list) # источники (позже)
-    position_size_usd: float = 100.0                 # объём сделки в $
-    leverage: float = 1.0                            # плечо
-    interval_seconds: int = 60                       # интервал проверки в секундах
-    paused: bool = False                             # пауза уведомлений
-    pending_action: str | None = None               # что сейчас ждём от пользователя
+    coins: list[str] = field(default_factory=list)
+    min_spread: float = 2.0
+    min_profit_usd: float = 10.0
+    sources: list[str] = field(default_factory=list)
+    position_size_usd: float = 100.0
+    leverage: float = 1.0
+    interval_seconds: int = 60
+    paused: bool = False
+    pending_action: str | None = None
+    menu_message_id: int | None = None  # ID сообщения с меню
 
 
 user_settings: dict[int, UserSettings] = {}
-
-# Словарь для отслеживания последних уведомлений (анти-спам)
-# Формат: {user_id: {coin: datetime}}
 last_notifications: dict[int, dict[str, datetime]] = {}
 
 
 def get_user_settings(user_id: int) -> UserSettings:
-    """
-    Возвращает настройки пользователя, создаёт с дефолтами, если их ещё нет.
-    """
     if user_id not in user_settings:
         user_settings[user_id] = UserSettings()
     if user_id not in last_notifications:
@@ -65,24 +60,27 @@ def get_user_settings(user_id: int) -> UserSettings:
     return user_settings[user_id]
 
 
-# ---------- Конфигурация комиссий perp-DEX (пока захардкожены) ----------
-# Формат: {dex_name: {"maker": %, "taker": %}}
+# ---------- Конфигурация ----------
+
 DEX_FEES = {
-    "Nado": {"maker": 0.02, "taker": 0.05},      # 0.02% мейкер, 0.05% тейкер
+    "Nado": {"maker": 0.02, "taker": 0.05},
     "Ethereal": {"maker": 0.02, "taker": 0.05},
     "Pacifica": {"maker": 0.02, "taker": 0.05},
     "Extended": {"maker": 0.02, "taker": 0.05},
     "Variational": {"maker": 0.02, "taker": 0.05},
 }
 
-# Список доступных источников (пока для теста)
 AVAILABLE_SOURCES = list(DEX_FEES.keys())
+MIN_NOTIFICATION_INTERVAL_MINUTES = 1  # Уменьшили для мгновенной реакции
 
-# Минимальный интервал между уведомлениями по одной монете (в минутах)
-MIN_NOTIFICATION_INTERVAL_MINUTES = 5
+POPULAR_COINS = [
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "DOT", "MATIC", "AVAX",
+    "LINK", "UNI", "ATOM", "ETC", "LTC", "BCH", "XLM", "ALGO", "VET", "FIL",
+    "TRX", "EOS", "AAVE", "MKR", "COMP", "SNX", "YFI", "SUSHI", "CRV", "1INCH"
+]
 
 
-# ---------- Callback data для inline-кнопок ----------
+# ---------- Callback data ----------
 
 CALLBACK_MAIN_MENU = "main_menu"
 CALLBACK_SETTINGS = "settings"
@@ -95,13 +93,38 @@ CALLBACK_COINS_ADD = "coins_add"
 CALLBACK_COINS_REMOVE = "coins_remove"
 CALLBACK_COINS_LIST = "coins_list"
 CALLBACK_BACK = "back"
+CALLBACK_MANUAL_INPUT = "manual_input"
+
+# Быстрые значения
+CALLBACK_POSITION_SIZE_1000 = "pos_size_1000"
+CALLBACK_POSITION_SIZE_5000 = "pos_size_5000"
+CALLBACK_POSITION_SIZE_10000 = "pos_size_10000"
+CALLBACK_LEVERAGE_1 = "lev_1"
+CALLBACK_LEVERAGE_5 = "lev_5"
+CALLBACK_LEVERAGE_10 = "lev_10"
+
+CALLBACK_SPREAD_005 = "spread_0.05"
+CALLBACK_SPREAD_01 = "spread_0.1"
+CALLBACK_SPREAD_025 = "spread_0.25"
+CALLBACK_SPREAD_05 = "spread_0.5"
+CALLBACK_SPREAD_LESS_05 = "spread_<0.5"
+
+CALLBACK_PROFIT_5 = "profit_5"
+CALLBACK_PROFIT_10 = "profit_10"
+CALLBACK_PROFIT_20 = "profit_20"
+CALLBACK_PROFIT_50 = "profit_50"
+CALLBACK_PROFIT_100 = "profit_100"
+
+CALLBACK_INTERVAL_10 = "interval_10"
+CALLBACK_INTERVAL_30 = "interval_30"
+CALLBACK_INTERVAL_60 = "interval_60"
+CALLBACK_INTERVAL_300 = "interval_300"
 
 
 # ---------- Функции для создания клавиатур ----------
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CALLBACK_SETTINGS)],
@@ -113,7 +136,6 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_settings_keyboard() -> InlineKeyboardMarkup:
-    """Меню настроек"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="💰 Объём и плечо", callback_data=CALLBACK_POSITION)],
@@ -126,28 +148,99 @@ def get_settings_keyboard() -> InlineKeyboardMarkup:
     return keyboard
 
 
+def get_position_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="1000$", callback_data=CALLBACK_POSITION_SIZE_1000),
+                InlineKeyboardButton(text="5000$", callback_data=CALLBACK_POSITION_SIZE_5000),
+                InlineKeyboardButton(text="10000$", callback_data=CALLBACK_POSITION_SIZE_10000),
+            ],
+            [
+                InlineKeyboardButton(text="1x", callback_data=CALLBACK_LEVERAGE_1),
+                InlineKeyboardButton(text="5x", callback_data=CALLBACK_LEVERAGE_5),
+                InlineKeyboardButton(text="10x", callback_data=CALLBACK_LEVERAGE_10),
+            ],
+            [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_position")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
+        ]
+    )
+    return keyboard
+
+
+def get_spread_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="0.05%", callback_data=CALLBACK_SPREAD_005),
+                InlineKeyboardButton(text="0.1%", callback_data=CALLBACK_SPREAD_01),
+            ],
+            [
+                InlineKeyboardButton(text="0.25%", callback_data=CALLBACK_SPREAD_025),
+                InlineKeyboardButton(text="0.5%", callback_data=CALLBACK_SPREAD_05),
+            ],
+            [InlineKeyboardButton(text="<0.5%", callback_data=CALLBACK_SPREAD_LESS_05)],
+            [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_spread")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
+        ]
+    )
+    return keyboard
+
+
+def get_profit_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="5$", callback_data=CALLBACK_PROFIT_5),
+                InlineKeyboardButton(text="10$", callback_data=CALLBACK_PROFIT_10),
+                InlineKeyboardButton(text="20$", callback_data=CALLBACK_PROFIT_20),
+            ],
+            [
+                InlineKeyboardButton(text="50$", callback_data=CALLBACK_PROFIT_50),
+                InlineKeyboardButton(text="100$", callback_data=CALLBACK_PROFIT_100),
+            ],
+            [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_profit")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
+        ]
+    )
+    return keyboard
+
+
+def get_interval_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="10 сек", callback_data=CALLBACK_INTERVAL_10),
+                InlineKeyboardButton(text="30 сек", callback_data=CALLBACK_INTERVAL_30),
+            ],
+            [
+                InlineKeyboardButton(text="1 мин", callback_data=CALLBACK_INTERVAL_60),
+                InlineKeyboardButton(text="5 мин", callback_data=CALLBACK_INTERVAL_300),
+            ],
+            [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_interval")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
+        ]
+    )
+    return keyboard
+
+
 def get_coins_keyboard() -> InlineKeyboardMarkup:
-    """Меню управления монетами"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить монету", callback_data=CALLBACK_COINS_ADD)],
             [InlineKeyboardButton(text="➖ Удалить монету", callback_data=CALLBACK_COINS_REMOVE)],
             [InlineKeyboardButton(text="📋 Список монет", callback_data=CALLBACK_COINS_LIST)],
+            [InlineKeyboardButton(text="🔍 Поиск монет", callback_data="coins_search")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_MAIN_MENU)],
         ]
     )
     return keyboard
 
 
-# ---------- Функции для работы с ценами (пока тестовые) ----------
+# ---------- Функции для работы с ценами ----------
 
 
 async def get_fake_price(dex_name: str, coin: str) -> float:
-    """
-    Получает "фейковую" цену для теста.
-    Позже здесь будет реальный запрос к API.
-    """
-    # Генерируем случайную цену в разумном диапазоне
     base_prices = {
         "BTC": 60000,
         "ETH": 3000,
@@ -155,16 +248,11 @@ async def get_fake_price(dex_name: str, coin: str) -> float:
     }
     
     base = base_prices.get(coin, 1000)
-    # Добавляем случайное отклонение ±2%
     variation = random.uniform(-0.02, 0.02)
     return base * (1 + variation)
 
 
 async def get_prices_for_coin(coin: str, sources: list[str]) -> dict[str, float]:
-    """
-    Получает цены для монеты со всех указанных источников.
-    Возвращает словарь {dex_name: price}
-    """
     prices = {}
     for source in sources:
         if source in AVAILABLE_SOURCES:
@@ -174,10 +262,6 @@ async def get_prices_for_coin(coin: str, sources: list[str]) -> dict[str, float]
 
 
 def calculate_spread(prices: dict[str, float]) -> tuple[float, str, str]:
-    """
-    Рассчитывает спред между минимальной и максимальной ценой.
-    Возвращает: (spread_percent, min_dex, max_dex)
-    """
     if len(prices) < 2:
         return 0.0, "", ""
     
@@ -201,31 +285,19 @@ def calculate_profit(
     min_dex: str,
     max_dex: str,
 ) -> float:
-    """
-    Рассчитывает ожидаемый профит в долларах с учётом комиссий.
-    """
-    # Комиссии (в долях, не процентах)
     fee_min_dex = DEX_FEES.get(min_dex, {}).get("taker", 0.0005) / 100
     fee_max_dex = DEX_FEES.get(max_dex, {}).get("taker", 0.0005) / 100
     
-    # Номинальный объём позиции с учётом плеча
     nominal_size = position_size_usd * leverage
-    
-    # Грязная прибыль (разница цен)
     price_diff = max_price - min_price
     gross_profit = (price_diff / min_price) * nominal_size
     
-    # Комиссии на вход
     fee_entry_long = nominal_size * fee_min_dex
     fee_entry_short = nominal_size * fee_max_dex
-    
-    # Комиссии на выход (примерно такие же, упрощённо)
     fee_exit_long = nominal_size * fee_min_dex
     fee_exit_short = nominal_size * fee_max_dex
     
     total_fees = fee_entry_long + fee_entry_short + fee_exit_long + fee_exit_short
-    
-    # Чистая прибыль
     net_profit = gross_profit - total_fees
     
     return net_profit
@@ -235,12 +307,9 @@ def calculate_profit(
 
 
 async def check_spreads_task():
-    """
-    Фоновая задача, которая периодически проверяет спреды для всех пользователей.
-    """
+    """Проверка спредов каждую секунду для мгновенной реакции"""
     while True:
         try:
-            # Проходим по всем пользователям
             for user_id, settings in user_settings.items():
                 if settings.paused:
                     continue
@@ -248,29 +317,23 @@ async def check_spreads_task():
                 if not settings.coins:
                     continue
                 
-                # Используем источники пользователя, или дефолтные, если не заданы
                 sources = settings.sources if settings.sources else AVAILABLE_SOURCES
                 
                 if not sources:
                     continue
                 
-                # Проверяем каждую монету
                 for coin in settings.coins:
                     try:
-                        # Получаем цены
                         prices = await get_prices_for_coin(coin, sources)
                         
                         if len(prices) < 2:
                             continue
                         
-                        # Рассчитываем спред
                         spread_percent, min_dex, max_dex = calculate_spread(prices)
                         
-                        # Проверяем условие по спреду
                         if spread_percent < settings.min_spread:
                             continue
                         
-                        # Рассчитываем профит
                         min_price = prices[min_dex]
                         max_price = prices[max_dex]
                         profit_usd = calculate_profit(
@@ -282,18 +345,16 @@ async def check_spreads_task():
                             max_dex,
                         )
                         
-                        # Проверяем условие по профиту
                         if profit_usd < settings.min_profit_usd:
                             continue
                         
-                        # Проверяем анти-спам (не чаще раза в N минут)
+                        # Анти-спам (1 минута)
                         last_notif = last_notifications.get(user_id, {}).get(coin)
                         if last_notif:
                             time_since_last = datetime.now() - last_notif
                             if time_since_last < timedelta(minutes=MIN_NOTIFICATION_INTERVAL_MINUTES):
                                 continue
                         
-                        # Отправляем уведомление
                         await send_spread_notification(
                             user_id,
                             coin,
@@ -304,9 +365,9 @@ async def check_spreads_task():
                             max_dex,
                             min_price,
                             max_price,
+                            settings,
                         )
                         
-                        # Обновляем время последнего уведомления
                         if user_id not in last_notifications:
                             last_notifications[user_id] = {}
                         last_notifications[user_id][coin] = datetime.now()
@@ -315,12 +376,11 @@ async def check_spreads_task():
                         print(f"Ошибка при проверке монеты {coin} для пользователя {user_id}: {e}")
                         continue
             
-            # Ждём минимальный интервал перед следующей проверкой
-            await asyncio.sleep(10)  # Минимум 10 секунд между проверками
+            await asyncio.sleep(1)  # Проверка каждую секунду
             
         except Exception as e:
             print(f"Ошибка в фоновой задаче проверки спредов: {e}")
-            await asyncio.sleep(60)  # При ошибке ждём минуту
+            await asyncio.sleep(5)
 
 
 async def send_spread_notification(
@@ -333,13 +393,11 @@ async def send_spread_notification(
     max_dex: str,
     min_price: float,
     max_price: float,
+    settings: UserSettings,
 ):
-    """
-    Отправляет уведомление пользователю о найденном спреде.
-    """
+    """Отправляет уведомление и обновляет меню, чтобы оно оставалось внизу"""
     time_str = datetime.now().strftime("%H:%M:%S UTC")
     
-    # Формируем список всех цен
     prices_text = "\n".join([f"  • {dex}: {price:.2f} USDT" for dex, price in prices.items()])
     
     text = (
@@ -354,7 +412,20 @@ async def send_spread_notification(
     )
     
     try:
+        # Отправляем уведомление (оно будет выше меню)
         await bot.send_message(chat_id=user_id, text=text)
+        
+        # Обновляем меню, чтобы оно оставалось внизу
+        if settings.menu_message_id:
+            try:
+                await bot.edit_message_reply_markup(
+                    chat_id=user_id,
+                    message_id=settings.menu_message_id,
+                    reply_markup=get_main_menu_keyboard()
+                )
+            except:
+                pass
+                
     except Exception as e:
         print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
 
@@ -364,9 +435,6 @@ async def send_spread_notification(
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    """
-    Обработчик команды /start и Menu Button
-    """
     s = get_user_settings(message.from_user.id)
     text = (
         "Привет! 👋\n\n"
@@ -374,7 +442,8 @@ async def cmd_start(message: Message):
         "Я автоматически проверяю спреды и отправляю уведомления, когда нахожу подходящие возможности.\n\n"
         "Выбери действие из меню ниже:"
     )
-    await message.answer(text, reply_markup=get_main_menu_keyboard())
+    msg = await message.answer(text, reply_markup=get_main_menu_keyboard())
+    s.menu_message_id = msg.message_id
 
 
 @dp.message(Command("help"))
@@ -404,34 +473,29 @@ async def cmd_resume(message: Message):
     await message.answer("Уведомления возобновлены.")
 
 
-# ---------- Обработчики callback-кнопок (inline) ----------
+# ---------- Обработчики callback-кнопок ----------
 
 
 @dp.callback_query(F.data == CALLBACK_MAIN_MENU)
 async def handle_main_menu(callback: CallbackQuery):
-    """Главное меню"""
-    text = (
-        "Главное меню\n\n"
-        "Выбери раздел:"
-    )
+    s = get_user_settings(callback.from_user.id)
+    text = "Главное меню\n\nВыбери раздел:"
     await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
 @dp.callback_query(F.data == CALLBACK_SETTINGS)
 async def handle_settings(callback: CallbackQuery):
-    """Меню настроек"""
-    text = (
-        "⚙️ Настройки\n\n"
-        "Выбери параметр для изменения:"
-    )
+    s = get_user_settings(callback.from_user.id)
+    text = "⚙️ Настройки\n\nВыбери параметр для изменения:"
     await callback.message.edit_text(text, reply_markup=get_settings_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
 @dp.callback_query(F.data == CALLBACK_COINS)
 async def handle_coins(callback: CallbackQuery):
-    """Меню управления монетами"""
     s = get_user_settings(callback.from_user.id)
     coins_text = ', '.join(s.coins) if s.coins else "пока не заданы"
     text = (
@@ -440,12 +504,12 @@ async def handle_coins(callback: CallbackQuery):
         f"Выбери действие:"
     )
     await callback.message.edit_text(text, reply_markup=get_coins_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
 @dp.callback_query(F.data == "show_settings")
 async def handle_show_settings(callback: CallbackQuery):
-    """Показать текущие настройки"""
     s = get_user_settings(callback.from_user.id)
     text = (
         "📊 Текущие настройки:\n\n"
@@ -464,100 +528,295 @@ async def handle_show_settings(callback: CallbackQuery):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+# ---------- Обработчики быстрых кнопок для объёма и плеча ----------
 
 
 @dp.callback_query(F.data == CALLBACK_POSITION)
 async def handle_position(callback: CallbackQuery):
-    """Настройка объёма и плеча"""
     s = get_user_settings(callback.from_user.id)
-    s.pending_action = "position"
     text = (
         "💰 Объём и плечо\n\n"
         f"Текущие значения:\n"
         f"- Объём: {s.position_size_usd}$\n"
         f"- Плечо: x{s.leverage}\n\n"
-        "Введи объём и плечо через пробел.\n"
-        "Пример: 1000 3  (это объём 1000$ и плечо x3)"
+        "Выбери быстрый вариант или введи вручную:"
     )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=get_position_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+@dp.callback_query(F.data == CALLBACK_POSITION_SIZE_1000)
+async def handle_position_size_1000(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.position_size_usd = 1000.0
+    await callback.answer(f"Объём установлен: 1000$")
+    await handle_position(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_POSITION_SIZE_5000)
+async def handle_position_size_5000(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.position_size_usd = 5000.0
+    await callback.answer(f"Объём установлен: 5000$")
+    await handle_position(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_POSITION_SIZE_10000)
+async def handle_position_size_10000(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.position_size_usd = 10000.0
+    await callback.answer(f"Объём установлен: 10000$")
+    await handle_position(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_LEVERAGE_1)
+async def handle_leverage_1(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.leverage = 1.0
+    await callback.answer(f"Плечо установлено: 1x")
+    await handle_position(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_LEVERAGE_5)
+async def handle_leverage_5(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.leverage = 5.0
+    await callback.answer(f"Плечо установлено: 5x")
+    await handle_position(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_LEVERAGE_10)
+async def handle_leverage_10(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.leverage = 10.0
+    await callback.answer(f"Плечо установлено: 10x")
+    await handle_position(callback)
+
+
+# ---------- Обработчики быстрых кнопок для спреда ----------
 
 
 @dp.callback_query(F.data == CALLBACK_MIN_SPREAD)
 async def handle_min_spread(callback: CallbackQuery):
-    """Настройка минимального спреда"""
     s = get_user_settings(callback.from_user.id)
-    s.pending_action = "min_spread"
     text = (
         "📈 Минимальный спред\n\n"
         f"Текущее значение: {s.min_spread}%\n\n"
-        "Введи минимальный спред в процентах.\n"
-        "Пример: 2.5"
+        "Выбери быстрый вариант или введи вручную:"
     )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=get_spread_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+@dp.callback_query(F.data == CALLBACK_SPREAD_005)
+async def handle_spread_005(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_spread = 0.05
+    await callback.answer(f"Спред установлен: 0.05%")
+    await handle_min_spread(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_SPREAD_01)
+async def handle_spread_01(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_spread = 0.1
+    await callback.answer(f"Спред установлен: 0.1%")
+    await handle_min_spread(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_SPREAD_025)
+async def handle_spread_025(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_spread = 0.25
+    await callback.answer(f"Спред установлен: 0.25%")
+    await handle_min_spread(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_SPREAD_05)
+async def handle_spread_05(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_spread = 0.5
+    await callback.answer(f"Спред установлен: 0.5%")
+    await handle_min_spread(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_SPREAD_LESS_05)
+async def handle_spread_less_05(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_spread = 0.01
+    await callback.answer(f"Спред установлен: <0.5%")
+    await handle_min_spread(callback)
+
+
+# ---------- Обработчики быстрых кнопок для профита ----------
 
 
 @dp.callback_query(F.data == CALLBACK_MIN_PROFIT)
 async def handle_min_profit(callback: CallbackQuery):
-    """Настройка минимального профита"""
     s = get_user_settings(callback.from_user.id)
-    s.pending_action = "min_profit"
     text = (
         "💵 Минимальный профит\n\n"
         f"Текущее значение: {s.min_profit_usd}$\n\n"
-        "Введи минимальный профит в долларах.\n"
-        "Пример: 20"
+        "Выбери быстрый вариант или введи вручную:"
     )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=get_profit_keyboard())
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+@dp.callback_query(F.data == CALLBACK_PROFIT_5)
+async def handle_profit_5(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_profit_usd = 5.0
+    await callback.answer(f"Профит установлен: 5$")
+    await handle_min_profit(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_PROFIT_10)
+async def handle_profit_10(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_profit_usd = 10.0
+    await callback.answer(f"Профит установлен: 10$")
+    await handle_min_profit(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_PROFIT_20)
+async def handle_profit_20(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_profit_usd = 20.0
+    await callback.answer(f"Профит установлен: 20$")
+    await handle_min_profit(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_PROFIT_50)
+async def handle_profit_50(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_profit_usd = 50.0
+    await callback.answer(f"Профит установлен: 50$")
+    await handle_min_profit(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_PROFIT_100)
+async def handle_profit_100(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.min_profit_usd = 100.0
+    await callback.answer(f"Профит установлен: 100$")
+    await handle_min_profit(callback)
+
+
+# ---------- Обработчики быстрых кнопок для интервала ----------
 
 
 @dp.callback_query(F.data == CALLBACK_INTERVAL)
 async def handle_interval(callback: CallbackQuery):
-    """Настройка интервала проверки"""
     s = get_user_settings(callback.from_user.id)
-    s.pending_action = "interval"
     text = (
         "⏱ Интервал проверки\n\n"
         f"Текущее значение: {s.interval_seconds} сек.\n\n"
-        "Введи интервал проверки в секундах.\n"
-        "Пример: 60"
+        "Выбери быстрый вариант или введи вручную:"
     )
+    await callback.message.edit_text(text, reply_markup=get_interval_keyboard())
+    s.menu_message_id = callback.message.message_id
+    await callback.answer()
+
+
+@dp.callback_query(F.data == CALLBACK_INTERVAL_10)
+async def handle_interval_10(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.interval_seconds = 10
+    await callback.answer(f"Интервал установлен: 10 сек")
+    await handle_interval(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_INTERVAL_30)
+async def handle_interval_30(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.interval_seconds = 30
+    await callback.answer(f"Интервал установлен: 30 сек")
+    await handle_interval(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_INTERVAL_60)
+async def handle_interval_60(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.interval_seconds = 60
+    await callback.answer(f"Интервал установлен: 60 сек")
+    await handle_interval(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_INTERVAL_300)
+async def handle_interval_300(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    s.interval_seconds = 300
+    await callback.answer(f"Интервал установлен: 300 сек")
+    await handle_interval(callback)
+
+
+# ---------- Обработчики ручного ввода ----------
+
+
+@dp.callback_query(F.data.startswith(f"{CALLBACK_MANUAL_INPUT}_"))
+async def handle_manual_input(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    action_type = callback.data.split("_", 1)[1]
+    
+    s.pending_action = action_type
+    
+    if action_type == "position":
+        text = (
+            "💰 Объём и плечо (ручной ввод)\n\n"
+            "Введи объём и плечо через пробел.\n"
+            "Пример: 1000 3  (это объём 1000$ и плечо x3)"
+        )
+    elif action_type == "spread":
+        text = (
+            "📈 Минимальный спред (ручной ввод)\n\n"
+            "Введи минимальный спред в процентах.\n"
+            "Пример: 2.5"
+        )
+    elif action_type == "profit":
+        text = (
+            "💵 Минимальный профит (ручной ввод)\n\n"
+            "Введи минимальный профит в долларах.\n"
+            "Пример: 20"
+        )
+    elif action_type == "interval":
+        text = (
+            "⏱ Интервал проверки (ручной ввод)\n\n"
+            "Введи интервал проверки в секундах.\n"
+            "Пример: 60"
+        )
+    else:
+        text = "Неизвестное действие"
+    
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+# ---------- Обработчики монет ----------
 
 
 @dp.callback_query(F.data == CALLBACK_COINS_ADD)
 async def handle_coins_add(callback: CallbackQuery):
-    """Добавление монеты"""
     s = get_user_settings(callback.from_user.id)
     s.pending_action = "add_coin"
     text = (
         "➕ Добавить монету\n\n"
         "Введи тикер монеты (например: BTC, ETH, SOL).\n"
-        "Можно ввести несколько через пробел: BTC ETH SOL"
+        "Можно ввести несколько через пробел: BTC ETH SOL\n\n"
+        "Популярные монеты: " + ", ".join(POPULAR_COINS[:10])
     )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -565,12 +824,12 @@ async def handle_coins_add(callback: CallbackQuery):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
 @dp.callback_query(F.data == CALLBACK_COINS_REMOVE)
 async def handle_coins_remove(callback: CallbackQuery):
-    """Удаление монеты"""
     s = get_user_settings(callback.from_user.id)
     if not s.coins:
         text = "Список монет пуст. Нечего удалять."
@@ -580,6 +839,7 @@ async def handle_coins_remove(callback: CallbackQuery):
             ]
         )
         await callback.message.edit_text(text, reply_markup=keyboard)
+        s.menu_message_id = callback.message.message_id
         await callback.answer()
         return
 
@@ -596,12 +856,12 @@ async def handle_coins_remove(callback: CallbackQuery):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
 @dp.callback_query(F.data == CALLBACK_COINS_LIST)
 async def handle_coins_list(callback: CallbackQuery):
-    """Список монет"""
     s = get_user_settings(callback.from_user.id)
     if not s.coins:
         text = "Список монет пуст. Добавь монеты через меню."
@@ -614,76 +874,27 @@ async def handle_coins_list(callback: CallbackQuery):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
     await callback.answer()
 
 
-@dp.callback_query(F.data == CALLBACK_BACK)
-async def handle_back(callback: CallbackQuery):
-    """Обработка кнопки Назад (универсальная)"""
-    await handle_main_menu(callback)
-
-
-# ---------- Команды через текст (альтернатива кнопкам) ----------
-
-
-@dp.message(Command("spread"))
-async def cmd_spread(message: Message):
-    """
-    /spread <число>
-    """
-    s = get_user_settings(message.from_user.id)
-
-    parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer("Использование: /spread <число>, пример: /spread 2.5")
-        return
-
-    await apply_min_spread(message, s, parts[1])
-
-
-@dp.message(Command("minprofit"))
-async def cmd_minprofit(message: Message):
-    """
-    /minprofit <число>
-    """
-    s = get_user_settings(message.from_user.id)
-
-    parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer("Использование: /minprofit <число>, пример: /minprofit 20")
-        return
-
-    await apply_min_profit(message, s, parts[1])
-
-
-@dp.message(Command("position"))
-async def cmd_position(message: Message):
-    """
-    /position <объём_в_$> <плечо>
-    """
-    s = get_user_settings(message.from_user.id)
-
-    parts = message.text.split()
-    if len(parts) != 3:
-        await message.answer("Использование: /position <объём_в_$> <плечо>, пример: /position 1000 3")
-        return
-
-    await apply_position(message, s, parts[1], parts[2])
-
-
-@dp.message(Command("interval"))
-async def cmd_interval(message: Message):
-    """
-    /interval <секунды>
-    """
-    s = get_user_settings(message.from_user.id)
-
-    parts = message.text.split()
-    if len(parts) != 2:
-        await message.answer("Использование: /interval <секунды>, пример: /interval 60")
-        return
-
-    await apply_interval(message, s, parts[1])
+@dp.callback_query(F.data == "coins_search")
+async def handle_coins_search(callback: CallbackQuery):
+    s = get_user_settings(callback.from_user.id)
+    text = (
+        "🔍 Поиск монет\n\n"
+        "Эта функция будет реализована позже.\n"
+        "Пока используй команду добавления монет и вводи тикер вручную.\n\n"
+        "Популярные монеты: " + ", ".join(POPULAR_COINS)
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
+        ]
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    s.menu_message_id = callback.message.message_id
+    await callback.answer()
 
 
 # ---------- Общий обработчик "следующего ввода" ----------
@@ -691,10 +902,6 @@ async def cmd_interval(message: Message):
 
 @dp.message()
 async def handle_free_text(message: Message):
-    """
-    Сюда попадают все сообщения, которые не поймали другие хендлеры.
-    Если для пользователя выставлен pending_action, трактуем это как ответ на запрос.
-    """
     s = get_user_settings(message.from_user.id)
 
     if not s.pending_action:
@@ -710,9 +917,9 @@ async def handle_free_text(message: Message):
         await handle_add_coin_input(message, s, message.text)
     elif action == "remove_coin":
         await handle_remove_coin_input(message, s, message.text)
-    elif action == "min_spread":
+    elif action == "spread":
         await apply_min_spread(message, s, message.text)
-    elif action == "min_profit":
+    elif action == "profit":
         await apply_min_profit(message, s, message.text)
     elif action == "position":
         parts = message.text.split()
@@ -737,7 +944,6 @@ async def handle_free_text(message: Message):
 
 
 async def handle_add_coin_input(message: Message, s: UserSettings, raw_input: str):
-    """Обрабатываем ввод монет (может быть одна или несколько через пробел)"""
     tickers = [t.strip().upper() for t in raw_input.split()]
     
     if not tickers:
@@ -768,7 +974,6 @@ async def handle_add_coin_input(message: Message, s: UserSettings, raw_input: st
 
 
 async def handle_remove_coin_input(message: Message, s: UserSettings, raw_input: str):
-    """Обрабатываем удаление монеты"""
     ticker = raw_input.strip().upper()
 
     if not ticker:
@@ -794,12 +999,12 @@ async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
         value = float(raw_value.replace(",", "."))
     except ValueError:
         await message.answer("Не получилось прочитать число. Пример: 2.5")
-        s.pending_action = "min_spread"
+        s.pending_action = "spread"
         return
 
     if value <= 0:
         await message.answer("Значение должно быть больше нуля.")
-        s.pending_action = "min_spread"
+        s.pending_action = "spread"
         return
 
     s.min_spread = value
@@ -812,12 +1017,12 @@ async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
         value = float(raw_value.replace(",", "."))
     except ValueError:
         await message.answer("Не получилось прочитать число. Пример: 20")
-        s.pending_action = "min_profit"
+        s.pending_action = "profit"
         return
 
     if value <= 0:
         await message.answer("Значение должно быть больше нуля.")
-        s.pending_action = "min_profit"
+        s.pending_action = "profit"
         return
 
     s.min_profit_usd = value
@@ -858,8 +1063,8 @@ async def apply_interval(message: Message, s: UserSettings, raw_value: str):
         s.pending_action = "interval"
         return
 
-    if value < 10:
-        await message.answer("Интервал не должен быть меньше 10 секунд.")
+    if value < 1:
+        await message.answer("Интервал не должен быть меньше 1 секунды.")
         s.pending_action = "interval"
         return
 
@@ -872,11 +1077,7 @@ async def apply_interval(message: Message, s: UserSettings, raw_value: str):
 
 
 async def setup_menu_button():
-    """
-    Настраивает Menu Button (виджет справа от поля ввода)
-    """
     try:
-        # Устанавливаем команды бота
         commands = [
             BotCommand(command="start", description="Главное меню"),
             BotCommand(command="help", description="Помощь"),
@@ -885,7 +1086,6 @@ async def setup_menu_button():
         ]
         await bot.set_my_commands(commands)
         
-        # Устанавливаем Menu Button
         await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
         print("Menu Button настроен успешно")
     except Exception as e:
@@ -898,10 +1098,8 @@ async def setup_menu_button():
 async def main():
     print("Бот запускается...")
     
-    # Настраиваем Menu Button
     await setup_menu_button()
     
-    # Запускаем фоновую задачу проверки спредов
     asyncio.create_task(check_spreads_task())
     
     await dp.start_polling(bot)
