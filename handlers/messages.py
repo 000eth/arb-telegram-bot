@@ -28,17 +28,10 @@ def register_message_handlers(dp: Dispatcher):
         s = get_user_settings(user_id)
         user_text = message.text or ""
         
-        # ВАЖНО: Проверяем pending_action ПЕРВЫМ делом
         print(f"DEBUG handle_all_messages: user_id={user_id}, text='{user_text}'")
         print(f"DEBUG: s.pending_action = {s.pending_action}")
-        print(f"DEBUG: user_settings[{user_id}].pending_action = {user_settings[user_id].pending_action}")
-        print(f"DEBUG: id(s) = {id(s)}, id(user_settings[{user_id}]) = {id(user_settings[user_id])}")
         
-        # Проверяем напрямую из словаря
-        if user_id in user_settings:
-            direct_pending = user_settings[user_id].pending_action
-            print(f"DEBUG: Прямая проверка user_settings[{user_id}].pending_action = {direct_pending}")
-        
+        # ВАЖНО: Проверяем pending_action ПЕРВЫМ, до проверки кнопок
         if s.pending_action:
             action = s.pending_action
             print(f"DEBUG: ✅ Найден pending_action = '{action}' для текста '{user_text}'")
@@ -83,7 +76,6 @@ def register_message_handlers(dp: Dispatcher):
                 )
                 return
         
-        # Если нет pending_action, проверяем кнопки
         print(f"DEBUG: ⚠️ НЕТ pending_action, проверяем кнопки для текста '{user_text}'")
         text = user_text
         
@@ -144,10 +136,8 @@ def register_message_handlers(dp: Dispatcher):
             await message.answer("⏹ Скан остановлен. Уведомления не будут отправляться.", reply_markup=get_main_menu_reply_keyboard())
             return
         
-        # Если ничего не подошло
         print(f"DEBUG: ❌ Не распознано сообщение '{text}'")
         await message.answer(
-            f"Я тебя не понял. Используй кнопки меню для навигации.\n\n"
-            f"DEBUG: pending_action = {s.pending_action}",
+            f"Я тебя не понял. Используй кнопки меню для навигации.",
             reply_markup=get_main_menu_reply_keyboard()
         )
