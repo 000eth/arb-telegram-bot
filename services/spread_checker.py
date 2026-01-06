@@ -104,6 +104,12 @@ async def check_spreads_task(bot_instance):
                                 price = await get_price_for_exchange(session, exchange_name, coin)
                                 if price:
                                     prices[exchange_name] = price
+                                
+                                # Задержка между запросами к биржам для избежания rate limit
+                                if exchange_name.lower() == "hibachi":
+                                    await asyncio.sleep(0.5)  # Дополнительная задержка для Hibachi
+                                else:
+                                    await asyncio.sleep(0.1)  # Небольшая задержка для других бирж
                             
                             if len(prices) < 2:
                                 continue
