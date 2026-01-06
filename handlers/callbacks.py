@@ -75,7 +75,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_SETTINGS)
     async def handle_settings(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -83,10 +82,6 @@ def register_callback_handlers(dp: Dispatcher):
         await safe_edit(callback, text, get_settings_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
-    
-    
-    # ---------- Обработчики монет ----------
-    
     
     @dp.callback_query(F.data == CALLBACK_COINS)
     async def handle_coins(callback: CallbackQuery):
@@ -101,14 +96,12 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_COINS_ALL)
     async def handle_coins_all(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.track_all_coins = True
         await callback.answer("Режим: Все монеты")
         await handle_coins(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_COINS_SELECTED)
     async def handle_coins_selected(callback: CallbackQuery):
@@ -122,7 +115,6 @@ def register_callback_handlers(dp: Dispatcher):
         await safe_edit(callback, text, get_coins_selected_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
-    
     
     @dp.callback_query(F.data == CALLBACK_COINS_ADD)
     async def handle_coins_add(callback: CallbackQuery):
@@ -141,7 +133,6 @@ def register_callback_handlers(dp: Dispatcher):
         await safe_edit(callback, text, keyboard)
         s.menu_message_id = callback.message.message_id
         await callback.answer()
-    
     
     @dp.callback_query(F.data == CALLBACK_COINS_REMOVE)
     async def handle_coins_remove(callback: CallbackQuery):
@@ -174,7 +165,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_COINS_LIST)
     async def handle_coins_list(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -194,10 +184,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
-    # ---------- Обработчики бирж ----------
-    
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES)
     async def handle_exchanges(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -211,7 +197,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_SELECT)
     async def handle_exchanges_select(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -222,7 +207,6 @@ def register_callback_handlers(dp: Dispatcher):
         await safe_edit(callback, text, get_exchanges_select_keyboard(s.selected_exchanges))
         s.menu_message_id = callback.message.message_id
         await callback.answer()
-    
     
     @dp.callback_query(F.data.startswith(CALLBACK_EXCHANGES_TOGGLE))
     async def handle_exchange_toggle(callback: CallbackQuery):
@@ -238,7 +222,6 @@ def register_callback_handlers(dp: Dispatcher):
         
         await handle_exchanges_select(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_ALL)
     async def handle_exchanges_all(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -251,7 +234,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_ALL_ENABLE)
     async def handle_exchanges_all_enable(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -259,14 +241,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer("✅ Все биржи включены")
         await handle_exchanges_all(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_ALL_DISABLE)
     async def handle_exchanges_all_disable(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.track_all_exchanges = False
         await callback.answer("⚪ Все биржи выключены")
         await handle_exchanges_all(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_CEX)
     async def handle_exchanges_cex(callback: CallbackQuery):
@@ -276,7 +256,6 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer("✅ Выбраны только CEX биржи")
         await handle_exchanges_select(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_EXCHANGES_DEX)
     async def handle_exchanges_dex(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -284,10 +263,6 @@ def register_callback_handlers(dp: Dispatcher):
         s.track_all_exchanges = False
         await callback.answer("✅ Выбраны только DEX биржи")
         await handle_exchanges_select(callback)
-    
-    
-    # ---------- Обработчики быстрых кнопок для объёма позиции ----------
-    
     
     @dp.callback_query(F.data == CALLBACK_POSITION)
     async def handle_position(callback: CallbackQuery):
@@ -301,14 +276,12 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_POSITION_SIZE_1000)
     async def handle_position_size_1000(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.position_size_usd = 1000.0
         await callback.answer(f"Объём установлен: 1000$")
         await handle_position(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_POSITION_SIZE_5000)
     async def handle_position_size_5000(callback: CallbackQuery):
@@ -317,17 +290,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Объём установлен: 5000$")
         await handle_position(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_POSITION_SIZE_10000)
     async def handle_position_size_10000(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.position_size_usd = 10000.0
         await callback.answer(f"Объём установлен: 10000$")
         await handle_position(callback)
-    
-    
-    # ---------- Обработчики быстрых кнопок для спреда ----------
-    
     
     @dp.callback_query(F.data == CALLBACK_MIN_SPREAD)
     async def handle_min_spread(callback: CallbackQuery):
@@ -341,14 +309,12 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_SPREAD_005)
     async def handle_spread_005(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.min_spread = 0.05
         await callback.answer(f"Спред установлен: 0.05%")
         await handle_min_spread(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_SPREAD_01)
     async def handle_spread_01(callback: CallbackQuery):
@@ -357,7 +323,6 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Спред установлен: 0.1%")
         await handle_min_spread(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_SPREAD_025)
     async def handle_spread_025(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -365,17 +330,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Спред установлен: 0.25%")
         await handle_min_spread(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_SPREAD_05)
     async def handle_spread_05(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.min_spread = 0.5
         await callback.answer(f"Спред установлен: 0.5%")
         await handle_min_spread(callback)
-    
-    
-    # ---------- Обработчики быстрых кнопок для профита ----------
-    
     
     @dp.callback_query(F.data == CALLBACK_MIN_PROFIT)
     async def handle_min_profit(callback: CallbackQuery):
@@ -389,14 +349,12 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_PROFIT_5)
     async def handle_profit_5(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.min_profit_usd = 5.0
         await callback.answer(f"Профит установлен: 5$")
         await handle_min_profit(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_PROFIT_10)
     async def handle_profit_10(callback: CallbackQuery):
@@ -405,14 +363,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Профит установлен: 10$")
         await handle_min_profit(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_PROFIT_20)
     async def handle_profit_20(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.min_profit_usd = 20.0
         await callback.answer(f"Профит установлен: 20$")
         await handle_min_profit(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_PROFIT_50)
     async def handle_profit_50(callback: CallbackQuery):
@@ -421,17 +377,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Профит установлен: 50$")
         await handle_min_profit(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_PROFIT_100)
     async def handle_profit_100(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.min_profit_usd = 100.0
         await callback.answer(f"Профит установлен: 100$")
         await handle_min_profit(callback)
-    
-    
-    # ---------- Обработчики быстрых кнопок для интервала ----------
-    
     
     @dp.callback_query(F.data == CALLBACK_INTERVAL)
     async def handle_interval(callback: CallbackQuery):
@@ -446,14 +397,12 @@ def register_callback_handlers(dp: Dispatcher):
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
-    
     @dp.callback_query(F.data == CALLBACK_INTERVAL_10)
     async def handle_interval_10(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.interval_seconds = 10
         await callback.answer(f"Интервал установлен: 10 сек")
         await handle_interval(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_INTERVAL_30)
     async def handle_interval_30(callback: CallbackQuery):
@@ -462,14 +411,12 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Интервал установлен: 30 сек")
         await handle_interval(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_INTERVAL_60)
     async def handle_interval_60(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         s.interval_seconds = 60
         await callback.answer(f"Интервал установлен: 60 сек")
         await handle_interval(callback)
-    
     
     @dp.callback_query(F.data == CALLBACK_INTERVAL_300)
     async def handle_interval_300(callback: CallbackQuery):
@@ -478,7 +425,6 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer(f"Интервал установлен: 300 сек")
         await handle_interval(callback)
     
-    
     @dp.callback_query(F.data == CALLBACK_INTERVAL_CONSTANT)
     async def handle_interval_constant(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
@@ -486,19 +432,13 @@ def register_callback_handlers(dp: Dispatcher):
         await callback.answer("⚡ Режим 'Постоянно' активирован!")
         await handle_interval(callback)
     
-    
-    # ---------- Обработчики ручного ввода ----------
-    
-    
     @dp.callback_query(F.data.startswith(f"{CALLBACK_MANUAL_INPUT}_"))
     async def handle_manual_input(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         
-        # Получаем action_type из callback_data
         callback_data = callback.data
         print(f"DEBUG: callback.data = '{callback_data}'")
         
-        # Разделяем по "_" и берём всё после "manual_input_"
         if callback_data.startswith(f"{CALLBACK_MANUAL_INPUT}_"):
             action_type = callback_data[len(f"{CALLBACK_MANUAL_INPUT}_"):]
         else:
@@ -534,7 +474,7 @@ def register_callback_handlers(dp: Dispatcher):
             text = (
                 "📈 Минимальный спред (ручной ввод)\n\n"
                 "Введи минимальный спред в процентах.\n"
-                "Пример: 2.5"
+                "Пример: 2.5 или 0.01"
             )
         elif action_type == "profit":
             text = (
