@@ -1,105 +1,108 @@
 """
-Hyperliquid API - получение цен с bid/ask
+Hyperliquid API - получение цен с bid/ask через официальный SDK
 """
-import aiohttp
 from typing import Optional, Dict
+from hyperliquid.info import Info
+from hyperliquid.utils import constants
 
-async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[float]:
+# Создаём один экземпляр Info для переиспользования
+_info_instance = None
+
+def get_info_instance():
+    """Получает или создаёт экземпляр Info"""
+    global _info_instance
+    if _info_instance is None:
+        _info_instance = Info(constants.MAINNET_API_URL, skip_ws=True)
+    return _info_instance
+
+
+async def get_price(session, symbol: str) -> Optional[float]:
     """Получает цену (для обратной совместимости)"""
     data = await get_price_data(session, symbol)
     return data.get("price") if data else None
 
 
-async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optional[Dict[str, float]]:
+async def get_price_data(session, symbol: str) -> Optional[Dict[str, float]]:
     """
-    Получает данные о цене с Hyperliquid
+    Получает данные о цене с Hyperliquid через официальный SDK
     Возвращает: {"price": float, "bid": float, "ask": float} или None
     """
-    print(f"DEBUG Hyperliquid get_price_data: Начало для {symbol}")
-    
     try:
-        url = "https://api.hyperliquid.xyz/info"
-        payload = {
-            "type": "allMids"
-        }
-        headers = {
-            "Content-Type": "application/json"
-        }
+        info = get_info_instance()
         
-        print(f"DEBUG Hyperliquid: Запрос к {url} с payload={payload}")
+        # Получаем все цены через SDK
+        all_mids = info.all_mids()
         
-        async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
-            print(f"DEBUG Hyperliquid: Status = {response.status}")
-            
-            if response.status == 200:
-                text = await response.text()
-                print(f"DEBUG Hyperliquid: Response text (первые 500 символов) = {text[:500]}")
-                
-                import json
-                data = json.loads(text)
-                
-                if isinstance(data, dict):
-                    print(f"DEBUG Hyperliquid: Parsed JSON type = dict, keys count = {len(data.keys())}")
-                    symbol_upper = symbol.upper()
-                    print(f"DEBUG Hyperliquid: Ищем символ '{symbol_upper}' в ключах...")
+        if not all_mids or not isinstance(all_mids, dict):
+            print(f"DEBUG Hyperliquid: all_mids вернул неожиданный формат")
+            return None
+        
+        symbol_upper = symbol.upper()
+        
+        # Ищем символ в ответе
+        for key, value in all_mids.items():
+            if symbol_upper in key.upper():
+                try:
+                    # Преобразуем значение в float (может быть строка или число)
+                    if isinstance(value, str):
+                        price = float(value)
+                    elif isinstance(value, (int, float)):
+                        price = float(value)
+                    else:
+                        continue
                     
-                    for key, value in data.items():
-                        if symbol_upper in key.upper():
-                            print(f"DEBUG Hyperliquid: ✅ Найден ключ '{key}' для символа '{symbol_upper}'")
-                            print(f"DEBUG Hyperliquid: Значение type = {type(value)}, value = {value}")
+                    # Получаем bid/ask из orderbook
+                    try:
+                        # Получаем стакан для символа
+                        # Формат символа для Hyperliquid может быть разным
+                        # Пробуем получить orderbook
+                        orderbook = info.orderbook(symbol_upper)
+                        
+                        if orderbook and isinstance(orderbook, dict):
+                            # Извлекаем bid и ask из стакана
+                            bids = orderbook.get("levels", [])
+                            asks = orderbook.get("levels", [])
                             
-                            # ИСПРАВЛЕНИЕ: Обрабатываем и строковые значения тоже
-                            try:
-                                if isinstance(value, (int, float)):
-                                    price = float(value)
-                                elif isinstance(value, str):
-                                    # Пробуем преобразовать строку в float
-                                    price = float(value)
-                                    print(f"DEBUG Hyperliquid: Преобразовали строку '{value}' в float {price}")
-                                else:
-                                    print(f"DEBUG Hyperliquid: Неподдерживаемый тип значения: {type(value)}")
-                                    continue
-                                
-                                result = {
-                                    "price": price,
-                                    "bid": price * 0.9999,
-                                    "ask": price * 1.0001
-                                }
-                                print(f"DEBUG Hyperliquid: ✅ Возвращаем результат: {result}")
-                                return result
-                            except (ValueError, TypeError) as e:
-                                print(f"DEBUG Hyperliquid: Ошибка преобразования значения '{value}': {e}")
-                                continue
+                            # Берем лучшие bid и ask
+                            if bids and len(bids) > 0:
+                                best_bid = float(bids[0][0]) if isinstance(bids[0], list) else float(bids[0].get("px", price * 0.9999))
+                            else:
+                                best_bid = price * 0.9999
                             
-                            # Если значение - словарь
-                            if isinstance(value, dict):
-                                print(f"DEBUG Hyperliquid: Значение - словарь, keys = {list(value.keys())}")
-                                if "mid" in value:
-                                    try:
-                                        mid_value = value["mid"]
-                                        if isinstance(mid_value, str):
-                                            price = float(mid_value)
-                                        else:
-                                            price = float(mid_value)
-                                        result = {
-                                            "price": price,
-                                            "bid": price * 0.9999,
-                                            "ask": price * 1.0001
-                                        }
-                                        print(f"DEBUG Hyperliquid: ✅ Возвращаем результат: {result}")
-                                        return result
-                                    except (ValueError, TypeError) as e:
-                                        print(f"DEBUG Hyperliquid: Ошибка преобразования mid: {e}")
+                            if asks and len(asks) > 0:
+                                best_ask = float(asks[0][0]) if isinstance(asks[0], list) else float(asks[0].get("px", price * 1.0001))
+                            else:
+                                best_ask = price * 1.0001
+                            
+                            result = {
+                                "price": price,
+                                "bid": best_bid,
+                                "ask": best_ask
+                            }
+                            print(f"DEBUG Hyperliquid: ✅ Получены данные через SDK: {result}")
+                            return result
+                    except Exception as e:
+                        print(f"DEBUG Hyperliquid: Не удалось получить orderbook, используем приблизительные bid/ask: {e}")
                     
-                    print(f"DEBUG Hyperliquid: ⚠️ Символ '{symbol_upper}' не найден в ответе")
-                    print(f"DEBUG Hyperliquid: Первые 10 ключей: {list(data.keys())[:10]}")
-            else:
-                text = await response.text()
-                print(f"DEBUG Hyperliquid: ❌ HTTP {response.status}. Response: {text[:200]}")
+                    # Если не удалось получить orderbook, используем приблизительные значения
+                    result = {
+                        "price": price,
+                        "bid": price * 0.9999,
+                        "ask": price * 1.0001
+                    }
+                    print(f"DEBUG Hyperliquid: ✅ Получена цена через SDK (приблизительные bid/ask): {result}")
+                    return result
+                    
+                except (ValueError, TypeError) as e:
+                    print(f"DEBUG Hyperliquid: Ошибка преобразования значения '{value}': {e}")
+                    continue
+        
+        print(f"DEBUG Hyperliquid: ⚠️ Символ '{symbol_upper}' не найден")
+        return None
+        
     except Exception as e:
         print(f"DEBUG Hyperliquid: ❌ ИСКЛЮЧЕНИЕ для {symbol}: {e}")
         import traceback
         traceback.print_exc()
     
-    print(f"DEBUG Hyperliquid: ❌ Возвращаем None для {symbol}")
     return None
