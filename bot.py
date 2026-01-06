@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart, Command, Text
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
@@ -504,20 +504,20 @@ async def remove_coin(message: Message, s: UserSettings, ticker: str):
 # ---------- Обработка нажатий на кнопки меню ----------
 
 
-@dp.message(Text(BTN_CANCEL))
+@dp.message(F.text == BTN_CANCEL)
 async def handle_cancel(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = None
     await message.answer("Отменено. Настройки не изменены.", reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message(Text(BTN_COINS))
+@dp.message(F.text == BTN_COINS)
 async def handle_btn_coins(message: Message):
     s = get_user_settings(message.from_user.id)
     await show_coins_menu(message, s)
 
 
-@dp.message(Text("Добавить монету"))
+@dp.message(F.text == "Добавить монету")
 async def handle_add_coin_btn(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = "add_coin"
@@ -528,7 +528,7 @@ async def handle_add_coin_btn(message: Message):
     )
 
 
-@dp.message(Text("Удалить монету"))
+@dp.message(F.text == "Удалить монету")
 async def handle_remove_coin_btn(message: Message):
     s = get_user_settings(message.from_user.id)
     if not s.coins:
@@ -544,13 +544,13 @@ async def handle_remove_coin_btn(message: Message):
     )
 
 
-@dp.message(Text("Список монет"))
+@dp.message(F.text == "Список монет")
 async def handle_list_coins_btn(message: Message):
     s = get_user_settings(message.from_user.id)
     await show_coins_list(message, s)
 
 
-@dp.message(Text(BTN_POSITION))
+@dp.message(F.text == BTN_POSITION)
 async def handle_btn_position(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = "position"
@@ -561,7 +561,7 @@ async def handle_btn_position(message: Message):
     )
 
 
-@dp.message(Text(BTN_MIN_SPREAD))
+@dp.message(F.text == BTN_MIN_SPREAD)
 async def handle_btn_min_spread(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = "min_spread"
@@ -572,7 +572,7 @@ async def handle_btn_min_spread(message: Message):
     )
 
 
-@dp.message(Text(BTN_MIN_PROFIT))
+@dp.message(F.text == BTN_MIN_PROFIT)
 async def handle_btn_min_profit(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = "min_profit"
@@ -583,7 +583,7 @@ async def handle_btn_min_profit(message: Message):
     )
 
 
-@dp.message(Text(BTN_INTERVAL))
+@dp.message(F.text == BTN_INTERVAL)
 async def handle_btn_interval(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = "interval"
