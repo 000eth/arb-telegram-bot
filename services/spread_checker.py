@@ -137,13 +137,23 @@ async def check_spreads_task(bot_instance):
                             prices_data = {}
                             for exchange_name in exchanges_to_check:
                                 print(f"    📡 Запрос цены с {exchange_name}...")
-                                data = await get_price_data_for_exchange(session, exchange_name, coin)
-                                if data and data.get("price"):
-                                    prices_data[exchange_name] = data
-                                    print(f"    ✅ {exchange_name}: {data.get('price'):.2f} USDT")
-                                else:
-                                    print(f"    ❌ {exchange_name}: не удалось получить цену")
+                                try:
+                                    # Добавляем таймаут для каждого запроса (максимум 3 секунды)
+                                    data = await asyncio.wait_for(
+                                        get_price_data_for_exchange(session, exchange_name, coin),
+                                        timeout=3.0
+                                    )
+                                    if data and data.get("price"):
+                                        prices_data[exchange_name] = data
+                                        print(f"    ✅ {exchange_name}: {data.get('price'):.2f} USDT")
+                                    else:
+                                        print(f"    ❌ {exchange_name}: не удалось получить цену")
+                                except asyncio.TimeoutError:
+                                    print(f"    ⚠️ {exchange_name}: timeout (превышено 3 сек), пропускаем")
+                                except Exception as e:
+                                    print(f"    ⚠️ {exchange_name}: ошибка {type(e).__name__}: {e}, пропускаем")
                                 
+                                # Задержка только для Hibachi (увеличена до 0.5 сек)
                                 if exchange_name.lower() == "hibachi":
                                     await asyncio.sleep(0.5)
                                 else:
