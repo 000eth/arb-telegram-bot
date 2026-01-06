@@ -491,13 +491,13 @@ def register_callback_handlers(dp: Dispatcher):
         s.pending_action = action_type
         print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{action_type}'")
         print(f"DEBUG: Проверка - s.pending_action = {s.pending_action}")
+        print(f"DEBUG: Проверка - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
         
         if action_type == "position":
             text = (
                 "💰 Объём позиции (ручной ввод)\n\n"
                 "Введи объём позиции в долларах.\n"
-                "Пример: 1000 или 1,000 или 1000$\n\n"
-                f"DEBUG: pending_action установлен в '{s.pending_action}'"
+                "Пример: 1000 или 1,000 или 1000$"
             )
         elif action_type == "spread":
             text = (
@@ -522,6 +522,9 @@ def register_callback_handlers(dp: Dispatcher):
             text = "Неизвестное действие"
             s.pending_action = None
         
+        # Ещё раз проверяем после установки текста
+        print(f"DEBUG: После установки текста - s.pending_action = {s.pending_action}")
+        
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
@@ -529,4 +532,12 @@ def register_callback_handlers(dp: Dispatcher):
         )
         await callback.message.edit_text(text, reply_markup=keyboard)
         s.menu_message_id = callback.message.message_id
+        
+        # Финальная проверка перед ответом
+        print(f"DEBUG: Перед callback.answer() - s.pending_action = {s.pending_action}")
+        print(f"DEBUG: Перед callback.answer() - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
+        
         await callback.answer()
+        
+        # Проверка после ответа
+        print(f"DEBUG: После callback.answer() - s.pending_action = {s.pending_action}")
