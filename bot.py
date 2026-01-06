@@ -44,8 +44,10 @@ class UserSettings:
     leverage: float = 1.0
     interval_seconds: int = 60
     paused: bool = False
+    scan_active: bool = False  # Новое поле: активен ли скан
+    track_all_coins: bool = False  # Новое поле: отслеживать все монеты или только выбранные
     pending_action: str | None = None
-    menu_message_id: int | None = None  # ID сообщения с меню
+    menu_message_id: int | None = None
 
 
 user_settings: dict[int, UserSettings] = {}
@@ -71,12 +73,18 @@ DEX_FEES = {
 }
 
 AVAILABLE_SOURCES = list(DEX_FEES.keys())
-MIN_NOTIFICATION_INTERVAL_MINUTES = 1  # Уменьшили для мгновенной реакции
+MIN_NOTIFICATION_INTERVAL_MINUTES = 1
 
 POPULAR_COINS = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "DOT", "MATIC", "AVAX",
     "LINK", "UNI", "ATOM", "ETC", "LTC", "BCH", "XLM", "ALGO", "VET", "FIL",
     "TRX", "EOS", "AAVE", "MKR", "COMP", "SNX", "YFI", "SUSHI", "CRV", "1INCH"
+]
+
+# Список всех доступных монет (позже можно расширить или получать из API)
+ALL_COINS = POPULAR_COINS + [
+    "ARB", "OP", "APT", "SUI", "TIA", "SEI", "INJ", "NEAR", "FTM", "AVAX",
+    "ICP", "HBAR", "QNT", "EGLD", "FLOW", "THETA", "AXS", "SAND", "MANA", "ENJ"
 ]
 
 
@@ -92,8 +100,12 @@ CALLBACK_INTERVAL = "interval"
 CALLBACK_COINS_ADD = "coins_add"
 CALLBACK_COINS_REMOVE = "coins_remove"
 CALLBACK_COINS_LIST = "coins_list"
+CALLBACK_COINS_ALL = "coins_all"
+CALLBACK_COINS_SELECTED = "coins_selected"
 CALLBACK_BACK = "back"
 CALLBACK_MANUAL_INPUT = "manual_input"
+CALLBACK_SCAN_START = "scan_start"
+CALLBACK_SCAN_STOP = "scan_stop"
 
 # Быстрые значения
 CALLBACK_POSITION_SIZE_1000 = "pos_size_1000"
@@ -107,7 +119,6 @@ CALLBACK_SPREAD_005 = "spread_0.05"
 CALLBACK_SPREAD_01 = "spread_0.1"
 CALLBACK_SPREAD_025 = "spread_0.25"
 CALLBACK_SPREAD_05 = "spread_0.5"
-CALLBACK_SPREAD_LESS_05 = "spread_<0.5"
 
 CALLBACK_PROFIT_5 = "profit_5"
 CALLBACK_PROFIT_10 = "profit_10"
@@ -119,6 +130,7 @@ CALLBACK_INTERVAL_10 = "interval_10"
 CALLBACK_INTERVAL_30 = "interval_30"
 CALLBACK_INTERVAL_60 = "interval_60"
 CALLBACK_INTERVAL_300 = "interval_300"
+CALLBACK_INTERVAL_CONSTANT = "interval_constant"
 
 
 # ---------- Функции для создания клавиатур ----------
@@ -130,6 +142,10 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CALLBACK_SETTINGS)],
             [InlineKeyboardButton(text="🪙 Монеты", callback_data=CALLBACK_COINS)],
             [InlineKeyboardButton(text="📊 Текущие настройки", callback_data="show_settings")],
+            [
+                InlineKeyboardButton(text="▶️ Активировать скан", callback_data=CALLBACK_SCAN_START),
+                InlineKeyboardButton(text="⏹ Остановить скан", callback_data=CALLBACK_SCAN_STOP),
+            ],
         ]
     )
     return keyboard
@@ -179,7 +195,6 @@ def get_spread_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="0.25%", callback_data=CALLBACK_SPREAD_025),
                 InlineKeyboardButton(text="0.5%", callback_data=CALLBACK_SPREAD_05),
             ],
-            [InlineKeyboardButton(text="<0.5%", callback_data=CALLBACK_SPREAD_LESS_05)],
             [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_spread")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
         ]
@@ -217,6 +232,7 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="1 мин", callback_data=CALLBACK_INTERVAL_60),
                 InlineKeyboardButton(text="5 мин", callback_data=CALLBACK_INTERVAL_300),
             ],
+            [InlineKeyboardButton(text="⚡ Постоянно", callback_data=CALLBACK_INTERVAL_CONSTANT)],
             [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_interval")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
         ]
@@ -225,13 +241,25 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_coins_keyboard() -> InlineKeyboardMarkup:
+    """Меню управления монетами"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Все монеты", callback_data=CALLBACK_COINS_ALL)],
+            [InlineKeyboardButton(text="✅ Только выбранные", callback_data=CALLBACK_COINS_SELECTED)],
+            [InlineKeyboardButton(text="📋 Список монет", callback_data=CALLBACK_COINS_LIST)],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_MAIN_MENU)],
+        ]
+    )
+    return keyboard
+
+
+def get_coins_selected_keyboard() -> InlineKeyboardMarkup:
+    """Меню для работы с выбранными монетами"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить монету", callback_data=CALLBACK_COINS_ADD)],
             [InlineKeyboardButton(text="➖ Удалить монету", callback_data=CALLBACK_COINS_REMOVE)],
-            [InlineKeyboardButton(text="📋 Список монет", callback_data=CALLBACK_COINS_LIST)],
-            [InlineKeyboardButton(text="🔍 Поиск монет", callback_data="coins_search")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_MAIN_MENU)],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
         ]
     )
     return keyboard
@@ -307,14 +335,24 @@ def calculate_profit(
 
 
 async def check_spreads_task():
-    """Проверка спредов каждую секунду для мгновенной реакции"""
+    """Проверка спредов - работает только для пользователей с активным сканом"""
     while True:
         try:
             for user_id, settings in user_settings.items():
+                # Проверяем, активен ли скан для этого пользователя
+                if not settings.scan_active:
+                    continue
+                
                 if settings.paused:
                     continue
                 
-                if not settings.coins:
+                # Определяем список монет для проверки
+                if settings.track_all_coins:
+                    coins_to_check = ALL_COINS
+                else:
+                    coins_to_check = settings.coins
+                
+                if not coins_to_check:
                     continue
                 
                 sources = settings.sources if settings.sources else AVAILABLE_SOURCES
@@ -322,7 +360,10 @@ async def check_spreads_task():
                 if not sources:
                     continue
                 
-                for coin in settings.coins:
+                # Определяем интервал проверки (если 0 - проверяем постоянно)
+                check_interval = 0 if settings.interval_seconds == 0 else settings.interval_seconds
+                
+                for coin in coins_to_check:
                     try:
                         prices = await get_prices_for_coin(coin, sources)
                         
@@ -348,12 +389,13 @@ async def check_spreads_task():
                         if profit_usd < settings.min_profit_usd:
                             continue
                         
-                        # Анти-спам (1 минута)
-                        last_notif = last_notifications.get(user_id, {}).get(coin)
-                        if last_notif:
-                            time_since_last = datetime.now() - last_notif
-                            if time_since_last < timedelta(minutes=MIN_NOTIFICATION_INTERVAL_MINUTES):
-                                continue
+                        # Анти-спам (1 минута, или мгновенно если интервал = 0)
+                        if check_interval > 0:
+                            last_notif = last_notifications.get(user_id, {}).get(coin)
+                            if last_notif:
+                                time_since_last = datetime.now() - last_notif
+                                if time_since_last < timedelta(minutes=MIN_NOTIFICATION_INTERVAL_MINUTES):
+                                    continue
                         
                         await send_spread_notification(
                             user_id,
@@ -376,7 +418,8 @@ async def check_spreads_task():
                         print(f"Ошибка при проверке монеты {coin} для пользователя {user_id}: {e}")
                         continue
             
-            await asyncio.sleep(1)  # Проверка каждую секунду
+            # Если интервал = 0 (постоянно), проверяем каждую секунду, иначе используем интервал пользователя
+            await asyncio.sleep(1)
             
         except Exception as e:
             print(f"Ошибка в фоновой задаче проверки спредов: {e}")
@@ -412,10 +455,8 @@ async def send_spread_notification(
     )
     
     try:
-        # Отправляем уведомление (оно будет выше меню)
         await bot.send_message(chat_id=user_id, text=text)
         
-        # Обновляем меню, чтобы оно оставалось внизу
         if settings.menu_message_id:
             try:
                 await bot.edit_message_reply_markup(
@@ -497,10 +538,10 @@ async def handle_settings(callback: CallbackQuery):
 @dp.callback_query(F.data == CALLBACK_COINS)
 async def handle_coins(callback: CallbackQuery):
     s = get_user_settings(callback.from_user.id)
-    coins_text = ', '.join(s.coins) if s.coins else "пока не заданы"
+    mode_text = "Все монеты" if s.track_all_coins else f"Только выбранные ({len(s.coins)} монет)"
     text = (
         f"🪙 Управление монетами\n\n"
-        f"Текущие монеты: {coins_text}\n\n"
+        f"Режим отслеживания: {mode_text}\n\n"
         f"Выбери действие:"
     )
     await callback.message.edit_text(text, reply_markup=get_coins_keyboard())
@@ -508,18 +549,45 @@ async def handle_coins(callback: CallbackQuery):
     await callback.answer()
 
 
+@dp.callback_query(F.data == CALLBACK_COINS_ALL)
+async def handle_coins_all(callback: CallbackQuery):
+    """Включить отслеживание всех монет"""
+    s = get_user_settings(callback.from_user.id)
+    s.track_all_coins = True
+    await callback.answer("Режим: Все монеты")
+    await handle_coins(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_COINS_SELECTED)
+async def handle_coins_selected(callback: CallbackQuery):
+    """Перейти в меню выбранных монет"""
+    s = get_user_settings(callback.from_user.id)
+    s.track_all_coins = False
+    text = (
+        "✅ Только выбранные монеты\n\n"
+        f"Текущие монеты: {', '.join(s.coins) if s.coins else 'пока не заданы'}\n\n"
+        "Выбери действие:"
+    )
+    await callback.message.edit_text(text, reply_markup=get_coins_selected_keyboard())
+    s.menu_message_id = callback.message.message_id
+    await callback.answer()
+
+
 @dp.callback_query(F.data == "show_settings")
 async def handle_show_settings(callback: CallbackQuery):
     s = get_user_settings(callback.from_user.id)
+    coins_mode = "Все монеты" if s.track_all_coins else f"Только выбранные ({len(s.coins)} монет)"
+    interval_text = "Постоянно" if s.interval_seconds == 0 else f"{s.interval_seconds} сек."
     text = (
         "📊 Текущие настройки:\n\n"
-        f"- Монеты/пары: {', '.join(s.coins) if s.coins else 'пока не заданы'}\n"
+        f"- Монеты: {coins_mode}\n"
         f"- Минимальный спред: {s.min_spread}%\n"
         f"- Минимальный профит: {s.min_profit_usd}$\n"
         f"- Источники: {', '.join(s.sources) if s.sources else 'все доступные'}\n"
         f"- Объём позиции: {s.position_size_usd}$\n"
         f"- Плечо: x{s.leverage}\n"
-        f"- Интервал проверки: {s.interval_seconds} сек.\n"
+        f"- Интервал проверки: {interval_text}\n"
+        f"- Скан активен: {'Да' if s.scan_active else 'Нет'}\n"
         f"- Пауза уведомлений: {'Да' if s.paused else 'Нет'}"
     )
     keyboard = InlineKeyboardMarkup(
@@ -530,6 +598,27 @@ async def handle_show_settings(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=keyboard)
     s.menu_message_id = callback.message.message_id
     await callback.answer()
+
+
+# ---------- Обработчики управления сканом ----------
+
+
+@dp.callback_query(F.data == CALLBACK_SCAN_START)
+async def handle_scan_start(callback: CallbackQuery):
+    """Активировать скан"""
+    s = get_user_settings(callback.from_user.id)
+    s.scan_active = True
+    await callback.answer("✅ Скан активирован! Бот начал отслеживание.")
+    await handle_main_menu(callback)
+
+
+@dp.callback_query(F.data == CALLBACK_SCAN_STOP)
+async def handle_scan_stop(callback: CallbackQuery):
+    """Остановить скан"""
+    s = get_user_settings(callback.from_user.id)
+    s.scan_active = False
+    await callback.answer("⏹ Скан остановлен. Уведомления не будут отправляться.")
+    await handle_main_menu(callback)
 
 
 # ---------- Обработчики быстрых кнопок для объёма и плеча ----------
@@ -646,14 +735,6 @@ async def handle_spread_05(callback: CallbackQuery):
     await handle_min_spread(callback)
 
 
-@dp.callback_query(F.data == CALLBACK_SPREAD_LESS_05)
-async def handle_spread_less_05(callback: CallbackQuery):
-    s = get_user_settings(callback.from_user.id)
-    s.min_spread = 0.01
-    await callback.answer(f"Спред установлен: <0.5%")
-    await handle_min_spread(callback)
-
-
 # ---------- Обработчики быстрых кнопок для профита ----------
 
 
@@ -716,9 +797,10 @@ async def handle_profit_100(callback: CallbackQuery):
 @dp.callback_query(F.data == CALLBACK_INTERVAL)
 async def handle_interval(callback: CallbackQuery):
     s = get_user_settings(callback.from_user.id)
+    interval_text = "Постоянно" if s.interval_seconds == 0 else f"{s.interval_seconds} сек."
     text = (
         "⏱ Интервал проверки\n\n"
-        f"Текущее значение: {s.interval_seconds} сек.\n\n"
+        f"Текущее значение: {interval_text}\n\n"
         "Выбери быстрый вариант или введи вручную:"
     )
     await callback.message.edit_text(text, reply_markup=get_interval_keyboard())
@@ -758,6 +840,15 @@ async def handle_interval_300(callback: CallbackQuery):
     await handle_interval(callback)
 
 
+@dp.callback_query(F.data == CALLBACK_INTERVAL_CONSTANT)
+async def handle_interval_constant(callback: CallbackQuery):
+    """Установить режим 'Постоянно' - мгновенные уведомления"""
+    s = get_user_settings(callback.from_user.id)
+    s.interval_seconds = 0  # 0 означает постоянную проверку
+    await callback.answer("⚡ Режим 'Постоянно' активирован!")
+    await handle_interval(callback)
+
+
 # ---------- Обработчики ручного ввода ----------
 
 
@@ -790,7 +881,8 @@ async def handle_manual_input(callback: CallbackQuery):
         text = (
             "⏱ Интервал проверки (ручной ввод)\n\n"
             "Введи интервал проверки в секундах.\n"
-            "Пример: 60"
+            "Пример: 60\n\n"
+            "Для режима 'Постоянно' введи 0"
         )
     else:
         text = "Неизвестное действие"
@@ -820,7 +912,7 @@ async def handle_coins_add(callback: CallbackQuery):
     )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -835,7 +927,7 @@ async def handle_coins_remove(callback: CallbackQuery):
         text = "Список монет пуст. Нечего удалять."
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
+                [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
             ]
         )
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -852,7 +944,7 @@ async def handle_coins_remove(callback: CallbackQuery):
     )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -863,30 +955,13 @@ async def handle_coins_remove(callback: CallbackQuery):
 @dp.callback_query(F.data == CALLBACK_COINS_LIST)
 async def handle_coins_list(callback: CallbackQuery):
     s = get_user_settings(callback.from_user.id)
-    if not s.coins:
+    if s.track_all_coins:
+        text = f"🌐 Отслеживаются все монеты ({len(ALL_COINS)} монет)"
+    elif not s.coins:
         text = "Список монет пуст. Добавь монеты через меню."
     else:
         text = f"📋 Отслеживаемые монеты ({len(s.coins)}):\n" + "\n".join(f"- {coin}" for coin in s.coins)
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    s.menu_message_id = callback.message.message_id
-    await callback.answer()
-
-
-@dp.callback_query(F.data == "coins_search")
-async def handle_coins_search(callback: CallbackQuery):
-    s = get_user_settings(callback.from_user.id)
-    text = (
-        "🔍 Поиск монет\n\n"
-        "Эта функция будет реализована позже.\n"
-        "Пока используй команду добавления монет и вводи тикер вручную.\n\n"
-        "Популярные монеты: " + ", ".join(POPULAR_COINS)
-    )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
@@ -1059,18 +1134,19 @@ async def apply_interval(message: Message, s: UserSettings, raw_value: str):
     try:
         value = int(raw_value)
     except ValueError:
-        await message.answer("Не получилось прочитать целое число секунд. Пример: 60")
+        await message.answer("Не получилось прочитать целое число секунд. Пример: 60 (или 0 для режима 'Постоянно')")
         s.pending_action = "interval"
         return
 
-    if value < 1:
-        await message.answer("Интервал не должен быть меньше 1 секунды.")
+    if value < 0:
+        await message.answer("Значение не должно быть отрицательным.")
         s.pending_action = "interval"
         return
 
     s.interval_seconds = value
+    interval_text = "Постоянно" if value == 0 else f"{value} сек."
     s.pending_action = None
-    await message.answer(f"Интервал проверки установлен: {s.interval_seconds} сек.", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"Интервал проверки установлен: {interval_text}", reply_markup=get_main_menu_keyboard())
 
 
 # ---------- Настройка Menu Button ----------
