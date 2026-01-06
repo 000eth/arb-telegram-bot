@@ -1,6 +1,7 @@
 import asyncio
 import os
 import random
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
@@ -14,6 +15,8 @@ from aiogram.types import (
     CallbackQuery,
     BotCommand,
     MenuButtonCommands,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from dotenv import load_dotenv
 
@@ -44,8 +47,8 @@ class UserSettings:
     leverage: float = 1.0
     interval_seconds: int = 60
     paused: bool = False
-    scan_active: bool = False  # Новое поле: активен ли скан
-    track_all_coins: bool = False  # Новое поле: отслеживать все монеты или только выбранные
+    scan_active: bool = False
+    track_all_coins: bool = False
     pending_action: str | None = None
     menu_message_id: int | None = None
 
@@ -60,6 +63,61 @@ def get_user_settings(user_id: int) -> UserSettings:
     if user_id not in last_notifications:
         last_notifications[user_id] = {}
     return user_settings[user_id]
+
+
+# ---------- Функция нормализации монет ----------
+
+
+def normalize_coin_input(raw_input: str) -> list[str]:
+    """
+    Нормализует ввод монет:
+    - Игнорирует регистр (BTC, btc, Btc -> BTC)
+    - Извлекает тикер из пар (BTCUSDT, BTC/USDT, BTC-USDT -> BTC)
+    - Поддерживает различные разделители (пробел, запятая, точка, слэш, дефис и т.д.)
+    """
+    # Разбиваем по различным разделителям
+    separators = r'[\s,;|/\-_.]+'
+    parts = re.split(separators, raw_input.strip())
+    
+    normalized_coins = []
+    
+    for part in parts:
+        if not part:
+            continue
+        
+        # Приводим к верхнему регистру
+        part_upper = part.upper()
+        
+        # Убираем USDT, USD и другие валютные суффиксы из конца
+        # Обрабатываем форматы: BTCUSDT, BTC/USDT, BTC-USDT и т.д.
+        # Сначала пробуем найти тикер в начале строки
+        
+        # Убираем общие валютные суффиксы
+        currency_suffixes = ['USDT', 'USD', 'USDC', 'BUSD', 'TUSD', 'DAI', 'EUR', 'BTC', 'ETH']
+        
+        coin_ticker = part_upper
+        
+        # Если строка содержит один из суффиксов, извлекаем тикер до него
+        for suffix in currency_suffixes:
+            if part_upper.endswith(suffix) and len(part_upper) > len(suffix):
+                coin_ticker = part_upper[:-len(suffix)]
+                break
+            elif part_upper.startswith(suffix) and len(part_upper) > len(suffix):
+                # Если начинается с валюты (редкий случай), берём то что после
+                coin_ticker = part_upper[len(suffix):]
+                break
+        
+        # Если после обработки осталась пустая строка, используем исходную
+        if not coin_ticker:
+            coin_ticker = part_upper
+        
+        # Убираем лишние символы (если остались)
+        coin_ticker = re.sub(r'[^A-Z0-9]', '', coin_ticker)
+        
+        if coin_ticker and coin_ticker not in normalized_coins:
+            normalized_coins.append(coin_ticker)
+    
+    return normalized_coins
 
 
 # ---------- Конфигурация ----------
@@ -81,7 +139,6 @@ POPULAR_COINS = [
     "TRX", "EOS", "AAVE", "MKR", "COMP", "SNX", "YFI", "SUSHI", "CRV", "1INCH"
 ]
 
-# Список всех доступных монет (позже можно расширить или получать из API)
 ALL_COINS = POPULAR_COINS + [
     "ARB", "OP", "APT", "SUI", "TIA", "SEI", "INJ", "NEAR", "FTM", "AVAX",
     "ICP", "HBAR", "QNT", "EGLD", "FLOW", "THETA", "AXS", "SAND", "MANA", "ENJ"
@@ -136,17 +193,24 @@ CALLBACK_INTERVAL_CONSTANT = "interval_constant"
 # ---------- Функции для создания клавиатур ----------
 
 
-def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Настройки", callback_data=CALLBACK_SETTINGS)],
-            [InlineKeyboardButton(text="🪙 Монеты", callback_data=CALLBACK_COINS)],
-            [InlineKeyboardButton(text="📊 Текущие настройки", callback_data="show_settings")],
+def get_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Главное меню - ReplyKeyboardMarkup (кнопки всегда видны над полем ввода)"""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
             [
-                InlineKeyboardButton(text="▶️ Активировать скан", callback_data=CALLBACK_SCAN_START),
-                InlineKeyboardButton(text="⏹ Остановить скан", callback_data=CALLBACK_SCAN_STOP),
+                KeyboardButton(text="⚙️ Настройки"),
+                KeyboardButton(text="🪙 Монеты"),
             ],
-        ]
+            [
+                KeyboardButton(text="📊 Текущие настройки"),
+            ],
+            [
+                KeyboardButton(text="▶️ Активировать скан"),
+                KeyboardButton(text="⏹ Остановить скан"),
+            ],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )
     return keyboard
 
@@ -241,7 +305,6 @@ def get_interval_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_coins_keyboard() -> InlineKeyboardMarkup:
-    """Меню управления монетами"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🌐 Все монеты", callback_data=CALLBACK_COINS_ALL)],
@@ -254,7 +317,6 @@ def get_coins_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_coins_selected_keyboard() -> InlineKeyboardMarkup:
-    """Меню для работы с выбранными монетами"""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить монету", callback_data=CALLBACK_COINS_ADD)],
@@ -335,18 +397,15 @@ def calculate_profit(
 
 
 async def check_spreads_task():
-    """Проверка спредов - работает только для пользователей с активным сканом"""
     while True:
         try:
             for user_id, settings in user_settings.items():
-                # Проверяем, активен ли скан для этого пользователя
                 if not settings.scan_active:
                     continue
                 
                 if settings.paused:
                     continue
                 
-                # Определяем список монет для проверки
                 if settings.track_all_coins:
                     coins_to_check = ALL_COINS
                 else:
@@ -360,7 +419,6 @@ async def check_spreads_task():
                 if not sources:
                     continue
                 
-                # Определяем интервал проверки (если 0 - проверяем постоянно)
                 check_interval = 0 if settings.interval_seconds == 0 else settings.interval_seconds
                 
                 for coin in coins_to_check:
@@ -389,7 +447,6 @@ async def check_spreads_task():
                         if profit_usd < settings.min_profit_usd:
                             continue
                         
-                        # Анти-спам (1 минута, или мгновенно если интервал = 0)
                         if check_interval > 0:
                             last_notif = last_notifications.get(user_id, {}).get(coin)
                             if last_notif:
@@ -418,7 +475,6 @@ async def check_spreads_task():
                         print(f"Ошибка при проверке монеты {coin} для пользователя {user_id}: {e}")
                         continue
             
-            # Если интервал = 0 (постоянно), проверяем каждую секунду, иначе используем интервал пользователя
             await asyncio.sleep(1)
             
         except Exception as e:
@@ -438,7 +494,6 @@ async def send_spread_notification(
     max_price: float,
     settings: UserSettings,
 ):
-    """Отправляет уведомление и обновляет меню, чтобы оно оставалось внизу"""
     time_str = datetime.now().strftime("%H:%M:%S UTC")
     
     prices_text = "\n".join([f"  • {dex}: {price:.2f} USDT" for dex, price in prices.items()])
@@ -462,7 +517,7 @@ async def send_spread_notification(
                 await bot.edit_message_reply_markup(
                     chat_id=user_id,
                     message_id=settings.menu_message_id,
-                    reply_markup=get_main_menu_keyboard()
+                    reply_markup=get_settings_keyboard()
                 )
             except:
                 pass
@@ -481,10 +536,65 @@ async def cmd_start(message: Message):
         "Привет! 👋\n\n"
         "Я бот для отслеживания арбитражных возможностей на perp‑DEX.\n"
         "Я автоматически проверяю спреды и отправляю уведомления, когда нахожу подходящие возможности.\n\n"
-        "Выбери действие из меню ниже:"
+        "Используй кнопки меню для навигации."
     )
-    msg = await message.answer(text, reply_markup=get_main_menu_keyboard())
+    await message.answer(text, reply_markup=get_main_menu_reply_keyboard())
+
+
+# Обработчик для первого сообщения (когда пользователь только зашёл в бот)
+@dp.message(F.text == "⚙️ Настройки")
+async def handle_settings_button(message: Message):
+    s = get_user_settings(message.from_user.id)
+    text = "⚙️ Настройки\n\nВыбери параметр для изменения:"
+    msg = await message.answer(text, reply_markup=get_settings_keyboard())
     s.menu_message_id = msg.message_id
+
+
+@dp.message(F.text == "🪙 Монеты")
+async def handle_coins_button(message: Message):
+    s = get_user_settings(message.from_user.id)
+    mode_text = "Все монеты" if s.track_all_coins else f"Только выбранные ({len(s.coins)} монет)"
+    text = (
+        f"🪙 Управление монетами\n\n"
+        f"Режим отслеживания: {mode_text}\n\n"
+        f"Выбери действие:"
+    )
+    msg = await message.answer(text, reply_markup=get_coins_keyboard())
+    s.menu_message_id = msg.message_id
+
+
+@dp.message(F.text == "📊 Текущие настройки")
+async def handle_show_settings_button(message: Message):
+    s = get_user_settings(message.from_user.id)
+    coins_mode = "Все монеты" if s.track_all_coins else f"Только выбранные ({len(s.coins)} монет)"
+    interval_text = "Постоянно" if s.interval_seconds == 0 else f"{s.interval_seconds} сек."
+    text = (
+        "📊 Текущие настройки:\n\n"
+        f"- Монеты: {coins_mode}\n"
+        f"- Минимальный спред: {s.min_spread}%\n"
+        f"- Минимальный профит: {s.min_profit_usd}$\n"
+        f"- Источники: {', '.join(s.sources) if s.sources else 'все доступные'}\n"
+        f"- Объём позиции: {s.position_size_usd}$\n"
+        f"- Плечо: x{s.leverage}\n"
+        f"- Интервал проверки: {interval_text}\n"
+        f"- Скан активен: {'Да' if s.scan_active else 'Нет'}\n"
+        f"- Пауза уведомлений: {'Да' if s.paused else 'Нет'}"
+    )
+    await message.answer(text, reply_markup=get_main_menu_reply_keyboard())
+
+
+@dp.message(F.text == "▶️ Активировать скан")
+async def handle_scan_start_button(message: Message):
+    s = get_user_settings(message.from_user.id)
+    s.scan_active = True
+    await message.answer("✅ Скан активирован! Бот начал отслеживание.", reply_markup=get_main_menu_reply_keyboard())
+
+
+@dp.message(F.text == "⏹ Остановить скан")
+async def handle_scan_stop_button(message: Message):
+    s = get_user_settings(message.from_user.id)
+    s.scan_active = False
+    await message.answer("⏹ Скан остановлен. Уведомления не будут отправляться.", reply_markup=get_main_menu_reply_keyboard())
 
 
 @dp.message(Command("help"))
@@ -497,21 +607,21 @@ async def cmd_help(message: Message):
         "/resume - возобновить уведомления\n\n"
         "Используй кнопки меню для навигации и настройки бота."
     )
-    await message.answer(text, reply_markup=get_main_menu_keyboard())
+    await message.answer(text, reply_markup=get_main_menu_reply_keyboard())
 
 
 @dp.message(Command("pause"))
 async def cmd_pause(message: Message):
     s = get_user_settings(message.from_user.id)
     s.paused = True
-    await message.answer("Уведомления поставлены на паузу.")
+    await message.answer("Уведомления поставлены на паузу.", reply_markup=get_main_menu_reply_keyboard())
 
 
 @dp.message(Command("resume"))
 async def cmd_resume(message: Message):
     s = get_user_settings(message.from_user.id)
     s.paused = False
-    await message.answer("Уведомления возобновлены.")
+    await message.answer("Уведомления возобновлены.", reply_markup=get_main_menu_reply_keyboard())
 
 
 # ---------- Обработчики callback-кнопок ----------
@@ -521,7 +631,7 @@ async def cmd_resume(message: Message):
 async def handle_main_menu(callback: CallbackQuery):
     s = get_user_settings(callback.from_user.id)
     text = "Главное меню\n\nВыбери раздел:"
-    await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard())
+    await callback.message.edit_text(text, reply_markup=get_settings_keyboard())
     s.menu_message_id = callback.message.message_id
     await callback.answer()
 
@@ -551,7 +661,6 @@ async def handle_coins(callback: CallbackQuery):
 
 @dp.callback_query(F.data == CALLBACK_COINS_ALL)
 async def handle_coins_all(callback: CallbackQuery):
-    """Включить отслеживание всех монет"""
     s = get_user_settings(callback.from_user.id)
     s.track_all_coins = True
     await callback.answer("Режим: Все монеты")
@@ -560,7 +669,6 @@ async def handle_coins_all(callback: CallbackQuery):
 
 @dp.callback_query(F.data == CALLBACK_COINS_SELECTED)
 async def handle_coins_selected(callback: CallbackQuery):
-    """Перейти в меню выбранных монет"""
     s = get_user_settings(callback.from_user.id)
     s.track_all_coins = False
     text = (
@@ -600,12 +708,8 @@ async def handle_show_settings(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---------- Обработчики управления сканом ----------
-
-
 @dp.callback_query(F.data == CALLBACK_SCAN_START)
 async def handle_scan_start(callback: CallbackQuery):
-    """Активировать скан"""
     s = get_user_settings(callback.from_user.id)
     s.scan_active = True
     await callback.answer("✅ Скан активирован! Бот начал отслеживание.")
@@ -614,7 +718,6 @@ async def handle_scan_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data == CALLBACK_SCAN_STOP)
 async def handle_scan_stop(callback: CallbackQuery):
-    """Остановить скан"""
     s = get_user_settings(callback.from_user.id)
     s.scan_active = False
     await callback.answer("⏹ Скан остановлен. Уведомления не будут отправляться.")
@@ -842,9 +945,8 @@ async def handle_interval_300(callback: CallbackQuery):
 
 @dp.callback_query(F.data == CALLBACK_INTERVAL_CONSTANT)
 async def handle_interval_constant(callback: CallbackQuery):
-    """Установить режим 'Постоянно' - мгновенные уведомления"""
     s = get_user_settings(callback.from_user.id)
-    s.interval_seconds = 0  # 0 означает постоянную проверку
+    s.interval_seconds = 0
     await callback.answer("⚡ Режим 'Постоянно' активирован!")
     await handle_interval(callback)
 
@@ -907,8 +1009,7 @@ async def handle_coins_add(callback: CallbackQuery):
     text = (
         "➕ Добавить монету\n\n"
         "Введи тикер монеты (например: BTC, ETH, SOL).\n"
-        "Можно ввести несколько через пробел: BTC ETH SOL\n\n"
-        "Популярные монеты: " + ", ".join(POPULAR_COINS[:10])
+        "Можно ввести несколько через пробел: BTC ETH SOL"
     )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -981,8 +1082,8 @@ async def handle_free_text(message: Message):
 
     if not s.pending_action:
         await message.answer(
-            "Я тебя не понял. Используй /start или кнопку меню справа от поля ввода.",
-            reply_markup=get_main_menu_keyboard()
+            "Я тебя не понял. Используй кнопки меню для навигации.",
+            reply_markup=get_main_menu_reply_keyboard()
         )
         return
 
@@ -1005,33 +1106,33 @@ async def handle_free_text(message: Message):
     elif action == "interval":
         await apply_interval(message, s, message.text)
     else:
-        await message.answer("Неизвестное действие. Попробуй ещё раз через /start.")
+        await message.answer("Неизвестное действие. Попробуй ещё раз через меню.")
         s.pending_action = None
         return
 
     if s.pending_action is None:
         return
     s.pending_action = None
-    await message.answer("Готово! Используй /start для возврата в меню.", reply_markup=get_main_menu_keyboard())
+    await message.answer("Готово! Используй кнопки меню для дальнейшей настройки.", reply_markup=get_main_menu_reply_keyboard())
 
 
 # ---------- Обработка ввода монет ----------
 
 
 async def handle_add_coin_input(message: Message, s: UserSettings, raw_input: str):
-    tickers = [t.strip().upper() for t in raw_input.split()]
+    """Обрабатываем ввод монет с нормализацией"""
+    # Используем функцию нормализации
+    normalized_coins = normalize_coin_input(raw_input)
     
-    if not tickers:
-        await message.answer("Не получилось прочитать тикеры. Пример: BTC или BTC ETH SOL")
+    if not normalized_coins:
+        await message.answer("Не получилось прочитать тикеры. Попробуй ещё раз.")
         s.pending_action = "add_coin"
         return
 
     added = []
     already_exists = []
 
-    for ticker in tickers:
-        if not ticker:
-            continue
+    for ticker in normalized_coins:
         if ticker in s.coins:
             already_exists.append(ticker)
         else:
@@ -1045,16 +1146,19 @@ async def handle_add_coin_input(message: Message, s: UserSettings, raw_input: st
         response_parts.append(f"Уже есть в списке: {', '.join(already_exists)}")
 
     s.pending_action = None
-    await message.answer("\n".join(response_parts) + f"\n\nВсего монет: {len(s.coins)}", reply_markup=get_main_menu_keyboard())
+    await message.answer("\n".join(response_parts) + f"\n\nВсего монет: {len(s.coins)}", reply_markup=get_main_menu_reply_keyboard())
 
 
 async def handle_remove_coin_input(message: Message, s: UserSettings, raw_input: str):
-    ticker = raw_input.strip().upper()
-
-    if not ticker:
-        await message.answer("Не получилось прочитать тикер. Пример: BTC")
+    """Обрабатываем удаление монеты с нормализацией"""
+    normalized_coins = normalize_coin_input(raw_input)
+    
+    if not normalized_coins:
+        await message.answer("Не получилось прочитать тикер. Попробуй ещё раз.")
         s.pending_action = "remove_coin"
         return
+    
+    ticker = normalized_coins[0]  # Берём первую монету
 
     if ticker not in s.coins:
         await message.answer(f"Монеты {ticker} нет в списке.")
@@ -1063,7 +1167,7 @@ async def handle_remove_coin_input(message: Message, s: UserSettings, raw_input:
 
     s.coins.remove(ticker)
     s.pending_action = None
-    await message.answer(f"Монета {ticker} удалена. Осталось монет: {len(s.coins)}", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"Монета {ticker} удалена. Осталось монет: {len(s.coins)}", reply_markup=get_main_menu_reply_keyboard())
 
 
 # ---------- Функции применения настроек ----------
@@ -1084,7 +1188,7 @@ async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
 
     s.min_spread = value
     s.pending_action = None
-    await message.answer(f"Минимальный спред установлен: {s.min_spread}%.", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"Минимальный спред установлен: {s.min_spread}%.", reply_markup=get_main_menu_reply_keyboard())
 
 
 async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
@@ -1102,7 +1206,7 @@ async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
 
     s.min_profit_usd = value
     s.pending_action = None
-    await message.answer(f"Минимальный профит установлен: {s.min_profit_usd}$.", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"Минимальный профит установлен: {s.min_profit_usd}$.", reply_markup=get_main_menu_reply_keyboard())
 
 
 async def apply_position(message: Message, s: UserSettings, raw_size: str, raw_lev: str):
@@ -1126,7 +1230,7 @@ async def apply_position(message: Message, s: UserSettings, raw_size: str, raw_l
         f"Параметры позиции установлены:\n"
         f"- Объём: {s.position_size_usd}$\n"
         f"- Плечо: x{s.leverage}",
-        reply_markup=get_main_menu_keyboard()
+        reply_markup=get_main_menu_reply_keyboard()
     )
 
 
@@ -1146,7 +1250,7 @@ async def apply_interval(message: Message, s: UserSettings, raw_value: str):
     s.interval_seconds = value
     interval_text = "Постоянно" if value == 0 else f"{value} сек."
     s.pending_action = None
-    await message.answer(f"Интервал проверки установлен: {interval_text}", reply_markup=get_main_menu_keyboard())
+    await message.answer(f"Интервал проверки установлен: {interval_text}", reply_markup=get_main_menu_reply_keyboard())
 
 
 # ---------- Настройка Menu Button ----------
