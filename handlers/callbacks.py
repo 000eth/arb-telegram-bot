@@ -1,8 +1,7 @@
-from models import get_user_settings, user_settings
 from aiogram import Dispatcher, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from models import get_user_settings
+from models import get_user_settings, user_settings
 from config import ALL_EXCHANGES, CEX_EXCHANGES, DEX_EXCHANGES, ALL_COINS
 from keyboards import (
     get_main_menu_reply_keyboard,
