@@ -485,12 +485,22 @@ def register_callback_handlers(dp: Dispatcher):
     @dp.callback_query(F.data.startswith(f"{CALLBACK_MANUAL_INPUT}_"))
     async def handle_manual_input(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
-        action_type = callback.data.split("_", 1)[1]
+        
+        # Получаем action_type из callback_data
+        callback_data = callback.data
+        print(f"DEBUG: callback.data = '{callback_data}'")
+        
+        # Разделяем по "_" и берём всё после "manual_input_"
+        if callback_data.startswith(f"{CALLBACK_MANUAL_INPUT}_"):
+            action_type = callback_data[len(f"{CALLBACK_MANUAL_INPUT}_"):]
+        else:
+            action_type = callback_data.split("_", 1)[1] if "_" in callback_data else None
+        
+        print(f"DEBUG: action_type = '{action_type}'")
         
         # ВАЖНО: Устанавливаем pending_action ПЕРЕД отправкой сообщения
-        # Исправляем название: должно быть 'position', а не 'input_position'
         if action_type == "position":
-            s.pending_action = "position"  # Используем 'position', а не 'input_position'
+            s.pending_action = "position"
         elif action_type == "spread":
             s.pending_action = "spread"
         elif action_type == "profit":
@@ -498,6 +508,7 @@ def register_callback_handlers(dp: Dispatcher):
         elif action_type == "interval":
             s.pending_action = "interval"
         else:
+            print(f"DEBUG: ❌ Неизвестный action_type: '{action_type}'")
             s.pending_action = None
         
         print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{s.pending_action}'")
@@ -531,7 +542,7 @@ def register_callback_handlers(dp: Dispatcher):
                 "Для режима 'Постоянно' введи 0"
             )
         else:
-            text = "Неизвестное действие"
+            text = f"Неизвестное действие: {action_type}"
             s.pending_action = None
         
         # Ещё раз проверяем после установки текста
