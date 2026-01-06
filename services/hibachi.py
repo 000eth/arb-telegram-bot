@@ -1,53 +1,51 @@
 """
-Hibachi API - получение цен
-Документация: https://api-doc.hibachi.xyz/
+Hibachi API - получение цен с bid/ask
 """
 import aiohttp
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime, timedelta
 
 # Кэш для хранения цен и времени последнего запроса
 _price_cache = {}
 _last_request_time = {}
-_min_request_interval = 2  # Минимальный интервал между запросами (секунды)
+_min_request_interval = 2
 
 
 async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[float]:
+    """Получает цену (для обратной совместимости)"""
+    data = await get_price_data(session, symbol)
+    return data.get("price") if data else None
+
+
+async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optional[Dict[str, float]]:
     """
-    Получает цену с Hibachi (perp-DEX)
-    С обработкой rate limit и кэшированием
+    Получает данные о цене с Hibachi (perp-DEX)
+    Возвращает: {"price": float, "bid": float, "ask": float} или None
     
     Args:
         session: aiohttp сессия
         symbol: Тикер монеты (например, "BTC")
     
     Returns:
-        Цена в USDT или None при ошибке
+        Словарь с ценой, bid и ask или None при ошибке
     """
     try:
-        # Проверяем кэш (кэш на 5 секунд)
         cache_key = f"hibachi_{symbol}"
         if cache_key in _price_cache:
-            cached_price, cached_time = _price_cache[cache_key]
+            cached_data, cached_time = _price_cache[cache_key]
             if datetime.now() - cached_time < timedelta(seconds=5):
-                print(f"DEBUG Hibachi: Используем кэш для {symbol} = {cached_price}")
-                return cached_price
+                return cached_data
         
-        # Проверяем rate limit - делаем задержку между запросами
         if "hibachi" in _last_request_time:
             time_since_last = (datetime.now() - _last_request_time["hibachi"]).total_seconds()
             if time_since_last < _min_request_interval:
                 wait_time = _min_request_interval - time_since_last
-                print(f"DEBUG Hibachi: Задержка {wait_time:.2f} сек для избежания rate limit")
                 await asyncio.sleep(wait_time)
         
         _last_request_time["hibachi"] = datetime.now()
         
-        # Формат символа для Hibachi: BTC/USDT-P
         symbol_formatted = f"{symbol}/USDT-P"
-        
-        # Endpoint: /market/data/prices?symbol=
         url = "https://data-api.hibachi.xyz/market/data/prices"
         params = {"symbol": symbol_formatted}
         
@@ -56,94 +54,66 @@ async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[flo
             "Accept": "application/json"
         }
         
-        print(f"DEBUG Hibachi: Запрос к {url} с параметром symbol={symbol_formatted}")
-        
         async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
-            print(f"DEBUG Hibachi: Status = {response.status}")
-            
-            # Обработка rate limit
             if response.status == 429:
-                print(f"DEBUG Hibachi: ⚠️ Rate limit! Ждём 5 секунд...")
                 await asyncio.sleep(5)
-                # Пробуем ещё раз
                 async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response2:
                     if response2.status != 200:
-                        print(f"DEBUG Hibachi: ❌ Повторный запрос тоже вернул {response2.status}")
                         return None
                     response = response2
             
             if response.status == 200:
-                text = await response.text()
-                print(f"DEBUG Hibachi: Response (первые 500 символов) = {text[:500]}")
-                
                 import json
-                try:
-                    data = json.loads(text)
-                    print(f"DEBUG Hibachi: Parsed JSON keys = {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
-                except Exception as e:
-                    print(f"DEBUG Hibachi: Ошибка парсинга JSON: {e}")
-                    return None
+                data = json.loads(await response.text())
                 
-                # Парсим ответ Hibachi API
                 if isinstance(data, dict):
-                    # Приоритет: tradePrice (последняя цена сделки) > markPrice (маркировочная) > среднее bid/ask
-                    # ВАЖНО: Проверяем на None перед преобразованием в float
-                    if "tradePrice" in data and data["tradePrice"] is not None:
+                    # Извлекаем bid, ask и price
+                    bid = None
+                    ask = None
+                    price = None
+                    
+                    if data.get("bidPrice") is not None:
+                        try:
+                            bid = float(data["bidPrice"])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    if data.get("askPrice") is not None:
+                        try:
+                            ask = float(data["askPrice"])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Приоритет для цены: tradePrice > markPrice > среднее bid/ask
+                    if data.get("tradePrice") is not None:
                         try:
                             price = float(data["tradePrice"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через tradePrice = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                        except (ValueError, TypeError) as e:
-                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования tradePrice: {e}")
+                        except (ValueError, TypeError):
+                            pass
                     
-                    if "markPrice" in data and data["markPrice"] is not None:
+                    if price is None and data.get("markPrice") is not None:
                         try:
                             price = float(data["markPrice"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через markPrice = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                        except (ValueError, TypeError) as e:
-                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования markPrice: {e}")
+                        except (ValueError, TypeError):
+                            pass
                     
-                    if "askPrice" in data and "bidPrice" in data:
-                        ask = data["askPrice"]
-                        bid = data["bidPrice"]
-                        if ask is not None and bid is not None:
-                            try:
-                                ask_float = float(ask)
-                                bid_float = float(bid)
-                                price = (ask_float + bid_float) / 2.0
-                                print(f"DEBUG Hibachi: ✅ Найдена цена через среднее bid/ask = {price}")
-                                _price_cache[cache_key] = (price, datetime.now())
-                                return price
-                            except (ValueError, TypeError) as e:
-                                print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования bid/ask: {e}")
+                    if price is None and bid is not None and ask is not None:
+                        price = (bid + ask) / 2.0
                     
-                    if "spotPrice" in data and data["spotPrice"] is not None:
-                        try:
-                            price = float(data["spotPrice"])
-                            print(f"DEBUG Hibachi: ✅ Найдена цена через spotPrice = {price}")
-                            _price_cache[cache_key] = (price, datetime.now())
-                            return price
-                        except (ValueError, TypeError) as e:
-                            print(f"DEBUG Hibachi: ⚠️ Ошибка преобразования spotPrice: {e}")
-                    
-                    print(f"DEBUG Hibachi: ⚠️ Все поля цен равны None или отсутствуют. Доступные ключи: {list(data.keys())}")
+                    if price is not None:
+                        result = {"price": price}
+                        if bid is not None:
+                            result["bid"] = bid
+                        if ask is not None:
+                            result["ask"] = ask
+                        
+                        _price_cache[cache_key] = (result, datetime.now())
+                        return result
+            
             elif response.status == 404:
-                # Монета не найдена на Hibachi - это нормально, просто возвращаем None
-                text = await response.text()
-                print(f"DEBUG Hibachi: ℹ️ Монета {symbol} не найдена на Hibachi (404). Response: {text[:200]}")
                 return None
-            else:
-                print(f"DEBUG Hibachi: ❌ Ошибка HTTP {response.status}")
-                text = await response.text()
-                print(f"DEBUG Hibachi: Response = {text[:200]}")
         
     except Exception as e:
-        print(f"DEBUG Hibachi: ❌ Исключение при получении цены для {symbol}: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"DEBUG Hibachi: ❌ Ошибка для {symbol}: {e}")
     
-    print(f"DEBUG Hibachi: ❌ Не удалось получить цену для {symbol}")
     return None
