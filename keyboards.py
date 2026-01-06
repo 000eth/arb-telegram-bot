@@ -36,9 +36,6 @@ CALLBACK_SCAN_STOP = "scan_stop"
 CALLBACK_POSITION_SIZE_1000 = "pos_size_1000"
 CALLBACK_POSITION_SIZE_5000 = "pos_size_5000"
 CALLBACK_POSITION_SIZE_10000 = "pos_size_10000"
-CALLBACK_LEVERAGE_1 = "lev_1"
-CALLBACK_LEVERAGE_5 = "lev_5"
-CALLBACK_LEVERAGE_10 = "lev_10"
 
 CALLBACK_SPREAD_005 = "spread_0.05"
 CALLBACK_SPREAD_01 = "spread_0.1"
@@ -86,7 +83,7 @@ def get_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
 def get_settings_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💰 Объём и плечо", callback_data=CALLBACK_POSITION)],
+            [InlineKeyboardButton(text="💰 Объём позиции", callback_data=CALLBACK_POSITION)],
             [InlineKeyboardButton(text="📈 Минимальный спред", callback_data=CALLBACK_MIN_SPREAD)],
             [InlineKeyboardButton(text="💵 Минимальный профит", callback_data=CALLBACK_MIN_PROFIT)],
             [InlineKeyboardButton(text="⏱ Интервал проверки", callback_data=CALLBACK_INTERVAL)],
@@ -163,11 +160,6 @@ def get_position_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="1000$", callback_data=CALLBACK_POSITION_SIZE_1000),
                 InlineKeyboardButton(text="5000$", callback_data=CALLBACK_POSITION_SIZE_5000),
                 InlineKeyboardButton(text="10000$", callback_data=CALLBACK_POSITION_SIZE_10000),
-            ],
-            [
-                InlineKeyboardButton(text="1x", callback_data=CALLBACK_LEVERAGE_1),
-                InlineKeyboardButton(text="5x", callback_data=CALLBACK_LEVERAGE_5),
-                InlineKeyboardButton(text="10x", callback_data=CALLBACK_LEVERAGE_10),
             ],
             [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data=f"{CALLBACK_MANUAL_INPUT}_position")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
