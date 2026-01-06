@@ -25,25 +25,30 @@ async def get_price_data_for_exchange(session: aiohttp.ClientSession, exchange_n
     """
     exchange_name_lower = exchange_name.lower()
     
-    if exchange_name_lower == "hibachi":
-        return await get_price_data_hibachi(session, symbol)
-    elif exchange_name_lower == "hyperliquid":
-        return await get_price_data_hyperliquid(session, symbol)
-    elif exchange_name_lower == "bybit":
-        price = await get_price_bybit(session, symbol)
-        if price:
-            return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
-    elif exchange_name_lower == "okx":
-        price = await get_price_okx(session, symbol)
-        if price:
-            return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
-    elif exchange_name_lower == "mexc":
-        price = await get_price_mexc(session, symbol)
-        if price:
-            return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
-    elif exchange_name_lower == "gate":
-        price = await get_price_gate(session, symbol)
-        if price:
-            return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
+    try:
+        if exchange_name_lower == "hibachi":
+            return await get_price_data_hibachi(session, symbol)
+        elif exchange_name_lower == "hyperliquid":
+            return await get_price_data_hyperliquid(session, symbol)
+        elif exchange_name_lower == "bybit":
+            price = await get_price_bybit(session, symbol)
+            if price:
+                return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
+        elif exchange_name_lower == "okx":
+            price = await get_price_okx(session, symbol)
+            if price:
+                return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
+        elif exchange_name_lower == "mexc":
+            price = await get_price_mexc(session, symbol)
+            if price:
+                return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
+        elif exchange_name_lower == "gate":
+            price = await get_price_gate(session, symbol)
+            if price:
+                return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
+    except Exception as e:
+        print(f"DEBUG price_fetcher: ❌ Ошибка получения цены с {exchange_name} для {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
     
     return None
