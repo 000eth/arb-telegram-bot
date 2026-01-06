@@ -482,51 +482,49 @@ def register_callback_handlers(dp: Dispatcher):
     # ---------- Обработчики ручного ввода ----------
     
     
-    # В функции handle_manual_input добавь отладку:
-
-@dp.callback_query(F.data.startswith(f"{CALLBACK_MANUAL_INPUT}_"))
-async def handle_manual_input(callback: CallbackQuery):
-    s = get_user_settings(callback.from_user.id)
-    action_type = callback.data.split("_", 1)[1]
-    
-    # ВАЖНО: Устанавливаем pending_action ПЕРЕД отправкой сообщения
-    s.pending_action = action_type
-    print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{action_type}'")
-    
-    if action_type == "position":
-        text = (
-            "💰 Объём позиции (ручной ввод)\n\n"
-            "Введи объём позиции в долларах.\n"
-            "Пример: 1000 или 1,000 или 1000$"
+    @dp.callback_query(F.data.startswith(f"{CALLBACK_MANUAL_INPUT}_"))
+    async def handle_manual_input(callback: CallbackQuery):
+        s = get_user_settings(callback.from_user.id)
+        action_type = callback.data.split("_", 1)[1]
+        
+        # ВАЖНО: Устанавливаем pending_action ПЕРЕД отправкой сообщения
+        s.pending_action = action_type
+        print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{action_type}'")
+        
+        if action_type == "position":
+            text = (
+                "💰 Объём позиции (ручной ввод)\n\n"
+                "Введи объём позиции в долларах.\n"
+                "Пример: 1000 или 1,000 или 1000$"
+            )
+        elif action_type == "spread":
+            text = (
+                "📈 Минимальный спред (ручной ввод)\n\n"
+                "Введи минимальный спред в процентах.\n"
+                "Пример: 2.5"
+            )
+        elif action_type == "profit":
+            text = (
+                "💵 Минимальный профит (ручной ввод)\n\n"
+                "Введи минимальный профит в долларах.\n"
+                "Пример: 20"
+            )
+        elif action_type == "interval":
+            text = (
+                "⏱ Интервал проверки (ручной ввод)\n\n"
+                "Введи интервал проверки в секундах.\n"
+                "Пример: 60\n\n"
+                "Для режима 'Постоянно' введи 0"
+            )
+        else:
+            text = "Неизвестное действие"
+            s.pending_action = None
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
+            ]
         )
-    elif action_type == "spread":
-        text = (
-            "📈 Минимальный спред (ручной ввод)\n\n"
-            "Введи минимальный спред в процентах.\n"
-            "Пример: 2.5"
-        )
-    elif action_type == "profit":
-        text = (
-            "💵 Минимальный профит (ручной ввод)\n\n"
-            "Введи минимальный профит в долларах.\n"
-            "Пример: 20"
-        )
-    elif action_type == "interval":
-        text = (
-            "⏱ Интервал проверки (ручной ввод)\n\n"
-            "Введи интервал проверки в секундах.\n"
-            "Пример: 60\n\n"
-            "Для режима 'Постоянно' введи 0"
-        )
-    else:
-        text = "Неизвестное действие"
-        s.pending_action = None
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    s.menu_message_id = callback.message.message_id
-    await callback.answer()
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        s.menu_message_id = callback.message.message_id
+        await callback.answer()
