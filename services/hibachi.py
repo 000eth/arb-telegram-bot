@@ -23,17 +23,21 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
     Получает данные о цене с Hibachi (perp-DEX)
     Возвращает: {"price": float, "bid": float, "ask": float} или None
     """
+    print(f"DEBUG Hibachi get_price_data: Начало для {symbol}")
+    
     try:
         cache_key = f"hibachi_{symbol}"
         if cache_key in _price_cache:
             cached_data, cached_time = _price_cache[cache_key]
             if datetime.now() - cached_time < timedelta(seconds=5):
+                print(f"DEBUG Hibachi: Используем кэш для {symbol}")
                 return cached_data
         
         if "hibachi" in _last_request_time:
             time_since_last = (datetime.now() - _last_request_time["hibachi"]).total_seconds()
             if time_since_last < _min_request_interval:
                 wait_time = _min_request_interval - time_since_last
+                print(f"DEBUG Hibachi: Задержка {wait_time:.2f} сек")
                 await asyncio.sleep(wait_time)
         
         _last_request_time["hibachi"] = datetime.now()
@@ -47,20 +51,35 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
             "Accept": "application/json"
         }
         
+        print(f"DEBUG Hibachi: Запрос к {url} с params={params}")
+        
         async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            print(f"DEBUG Hibachi: Status = {response.status}")
+            
             if response.status == 429:
+                print(f"DEBUG Hibachi: Rate limit, ждём 5 сек...")
                 await asyncio.sleep(5)
                 async with session.get(url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as response2:
                     if response2.status != 200:
+                        print(f"DEBUG Hibachi: Повторный запрос вернул {response2.status}")
                         return None
                     response = response2
             
             if response.status == 200:
+                text = await response.text()
+                print(f"DEBUG Hibachi: Response text (первые 200 символов) = {text[:200]}")
+                
                 import json
-                data = json.loads(await response.text())
+                try:
+                    data = json.loads(text)
+                    print(f"DEBUG Hibachi: Parsed JSON type = {type(data)}")
+                    if isinstance(data, dict):
+                        print(f"DEBUG Hibachi: JSON keys = {list(data.keys())}")
+                except Exception as e:
+                    print(f"DEBUG Hibachi: Ошибка парсинга JSON: {e}")
+                    return None
                 
                 if isinstance(data, dict):
-                    # Извлекаем bid, ask и price
                     bid = None
                     ask = None
                     price = None
@@ -68,30 +87,34 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
                     if data.get("bidPrice") is not None:
                         try:
                             bid = float(data["bidPrice"])
-                        except (ValueError, TypeError):
-                            pass
+                            print(f"DEBUG Hibachi: bid = {bid}")
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: Ошибка преобразования bidPrice: {e}")
                     
                     if data.get("askPrice") is not None:
                         try:
                             ask = float(data["askPrice"])
-                        except (ValueError, TypeError):
-                            pass
+                            print(f"DEBUG Hibachi: ask = {ask}")
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: Ошибка преобразования askPrice: {e}")
                     
-                    # Приоритет для цены: tradePrice > markPrice > среднее bid/ask
                     if data.get("tradePrice") is not None:
                         try:
                             price = float(data["tradePrice"])
-                        except (ValueError, TypeError):
-                            pass
+                            print(f"DEBUG Hibachi: tradePrice = {price}")
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: Ошибка преобразования tradePrice: {e}")
                     
                     if price is None and data.get("markPrice") is not None:
                         try:
                             price = float(data["markPrice"])
-                        except (ValueError, TypeError):
-                            pass
+                            print(f"DEBUG Hibachi: markPrice = {price}")
+                        except (ValueError, TypeError) as e:
+                            print(f"DEBUG Hibachi: Ошибка преобразования markPrice: {e}")
                     
                     if price is None and bid is not None and ask is not None:
                         price = (bid + ask) / 2.0
+                        print(f"DEBUG Hibachi: price = среднее bid/ask = {price}")
                     
                     if price is not None:
                         result = {"price": price}
@@ -100,15 +123,24 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
                         if ask is not None:
                             result["ask"] = ask
                         
+                        print(f"DEBUG Hibachi: ✅ Возвращаем результат: {result}")
                         _price_cache[cache_key] = (result, datetime.now())
                         return result
+                    else:
+                        print(f"DEBUG Hibachi: ⚠️ price = None, не можем вернуть результат")
             
             elif response.status == 404:
+                text = await response.text()
+                print(f"DEBUG Hibachi: 404 - Монета не найдена. Response: {text[:200]}")
                 return None
+            else:
+                text = await response.text()
+                print(f"DEBUG Hibachi: ❌ HTTP {response.status}. Response: {text[:200]}")
         
     except Exception as e:
-        print(f"DEBUG Hibachi: ❌ Ошибка для {symbol}: {e}")
+        print(f"DEBUG Hibachi: ❌ ИСКЛЮЧЕНИЕ для {symbol}: {e}")
         import traceback
         traceback.print_exc()
     
+    print(f"DEBUG Hibachi: ❌ Возвращаем None для {symbol}")
     return None
