@@ -54,6 +54,10 @@ async def setup_menu_button():
 
 async def main():
     print("Бот запускается...")
+
+    # ВРЕМЕННО: тест Hibachi API
+    from test_hibachi_api import test_hibachi_api
+    await test_hibachi_api()
     
     await setup_menu_button()
     
