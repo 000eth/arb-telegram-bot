@@ -1,10 +1,13 @@
+"""
+Фоновая задача для проверки спредов
+"""
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta
 
 from models import user_settings, last_notifications
 from config import ALL_EXCHANGES, ALL_COINS, MIN_NOTIFICATION_INTERVAL_MINUTES
-from services.price_fetcher import get_price_for_exchange
+from services.price_fetcher import get_price_data_for_exchange
 from services.profit_calculator import calculate_profit_with_spread
 from keyboards import get_settings_keyboard
 
@@ -12,7 +15,7 @@ from keyboards import get_settings_keyboard
 async def send_spread_notification(
     user_id: int,
     coin: str,
-    prices: dict[str, float],
+    prices: dict[str, dict],  # {"exchange": {"price": float, "bid": float, "ask": float}}
     spread_percent: float,
     profit_data: dict,
     long_exchange: str,
@@ -29,7 +32,10 @@ async def send_spread_notification(
     long_url = long_exchange_info.get("url_template", "").format(symbol=coin)
     short_url = short_exchange_info.get("url_template", "").format(symbol=coin)
     
-    prices_text = "\n".join([f"  • {dex}: {price:.2f} USDT" for dex, price in prices.items()])
+    prices_text = "\n".join([
+        f"  • {exch}: {data.get('price', 0):.2f} USDT" 
+        for exch, data in prices.items()
+    ])
     
     text = (
         f"🔔 Найден арбитраж!\n\n"
@@ -75,10 +81,7 @@ async def check_spreads_task(bot_instance):
         while True:
             try:
                 for user_id, settings in user_settings.items():
-                    if not settings.scan_active:
-                        continue
-                    
-                    if settings.paused:
+                    if not settings.scan_active or settings.paused:
                         continue
                     
                     if settings.track_all_coins:
@@ -94,30 +97,32 @@ async def check_spreads_task(bot_instance):
                     else:
                         exchanges_to_check = settings.selected_exchanges if settings.selected_exchanges else list(ALL_EXCHANGES.keys())
                     
-                    if not exchanges_to_check:
+                    if not exchanges_to_check or len(exchanges_to_check) < 2:
                         continue
                     
                     for coin in coins_to_check:
                         try:
-                            prices = {}
+                            # Получаем данные с bid/ask
+                            prices_data = {}
                             for exchange_name in exchanges_to_check:
-                                price = await get_price_for_exchange(session, exchange_name, coin)
-                                if price:
-                                    prices[exchange_name] = price
+                                data = await get_price_data_for_exchange(session, exchange_name, coin)
+                                if data and data.get("price"):
+                                    prices_data[exchange_name] = data
                                 
-                                # Задержка между запросами к биржам для избежания rate limit
                                 if exchange_name.lower() == "hibachi":
-                                    await asyncio.sleep(0.5)  # Дополнительная задержка для Hibachi
+                                    await asyncio.sleep(0.5)
                                 else:
-                                    await asyncio.sleep(0.1)  # Небольшая задержка для других бирж
+                                    await asyncio.sleep(0.1)
                             
-                            if len(prices) < 2:
+                            if len(prices_data) < 2:
                                 continue
                             
-                            min_exchange = min(prices, key=prices.get)
-                            max_exchange = max(prices, key=prices.get)
-                            min_price = prices[min_exchange]
-                            max_price = prices[max_exchange]
+                            # Находим минимальную и максимальную цену
+                            min_exchange = min(prices_data, key=lambda x: prices_data[x].get("price", float('inf')))
+                            max_exchange = max(prices_data, key=lambda x: prices_data[x].get("price", 0))
+                            
+                            min_price = prices_data[min_exchange].get("price", 0)
+                            max_price = prices_data[max_exchange].get("price", 0)
                             
                             if min_price == 0:
                                 continue
@@ -127,17 +132,14 @@ async def check_spreads_task(bot_instance):
                             if spread_percent < settings.min_spread:
                                 continue
                             
+                            # Рассчитываем профит с учётом bid/ask
                             profit_data = calculate_profit_with_spread(
-                                min_price,
-                                max_price,
-                                None,  # long_bid
-                                None,  # long_ask
-                                None,  # short_bid
-                                None,  # short_ask
+                                min_exchange,  # ЛОНГ на дешевой бирже
+                                max_exchange,  # ШОРТ на дорогой бирже
+                                prices_data[min_exchange],
+                                prices_data[max_exchange],
                                 settings.position_size_usd,
                                 settings.leverage,
-                                min_exchange,
-                                max_exchange,
                             )
                             
                             best_profit = max(profit_data["market_profit"], profit_data["limit_profit"])
@@ -154,11 +156,11 @@ async def check_spreads_task(bot_instance):
                             await send_spread_notification(
                                 user_id,
                                 coin,
-                                prices,
+                                prices_data,
                                 spread_percent,
                                 profit_data,
-                                min_exchange,
-                                max_exchange,
+                                min_exchange,  # ЛОНГ
+                                max_exchange,  # ШОРТ
                                 settings,
                                 bot_instance,
                             )
