@@ -1,6 +1,7 @@
 """
 Hyperliquid API - получение цен с bid/ask через официальный SDK
 """
+import asyncio
 from typing import Optional, Dict
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
@@ -29,76 +30,90 @@ async def get_price_data(session, symbol: str) -> Optional[Dict[str, float]]:
     """
     try:
         info = get_info_instance()
+        symbol_upper = symbol.upper()
         
-        # Получаем все цены через SDK
-        all_mids = info.all_mids()
+        # Выполняем синхронные вызовы SDK в отдельном потоке
+        all_mids = await asyncio.to_thread(info.all_mids)
         
         if not all_mids or not isinstance(all_mids, dict):
             print(f"DEBUG Hyperliquid: all_mids вернул неожиданный формат")
             return None
         
-        symbol_upper = symbol.upper()
+        # ИСПРАВЛЕНИЕ: Ищем точное совпадение или стандартные форматы
+        # Пробуем разные варианты имени символа
+        possible_keys = [
+            symbol_upper,           # SOL
+            f"{symbol_upper}USD",   # SOLUSD
+            f"{symbol_upper}USDT",  # SOLUSDT
+            f"{symbol_upper}-USD",  # SOL-USD
+            f"{symbol_upper}-USDT", # SOL-USDT
+        ]
         
-        # Ищем символ в ответе
-        for key, value in all_mids.items():
-            if symbol_upper in key.upper():
+        price = None
+        found_key = None
+        
+        # Сначала ищем точное совпадение
+        for key in possible_keys:
+            if key in all_mids:
+                value = all_mids[key]
                 try:
-                    # Преобразуем значение в float (может быть строка или число)
                     if isinstance(value, str):
                         price = float(value)
                     elif isinstance(value, (int, float)):
                         price = float(value)
-                    else:
-                        continue
-                    
-                    # Получаем bid/ask из orderbook
-                    try:
-                        # Получаем стакан для символа
-                        # Формат символа для Hyperliquid может быть разным
-                        # Пробуем получить orderbook
-                        orderbook = info.orderbook(symbol_upper)
-                        
-                        if orderbook and isinstance(orderbook, dict):
-                            # Извлекаем bid и ask из стакана
-                            bids = orderbook.get("levels", [])
-                            asks = orderbook.get("levels", [])
-                            
-                            # Берем лучшие bid и ask
-                            if bids and len(bids) > 0:
-                                best_bid = float(bids[0][0]) if isinstance(bids[0], list) else float(bids[0].get("px", price * 0.9999))
-                            else:
-                                best_bid = price * 0.9999
-                            
-                            if asks and len(asks) > 0:
-                                best_ask = float(asks[0][0]) if isinstance(asks[0], list) else float(asks[0].get("px", price * 1.0001))
-                            else:
-                                best_ask = price * 1.0001
-                            
-                            result = {
-                                "price": price,
-                                "bid": best_bid,
-                                "ask": best_ask
-                            }
-                            print(f"DEBUG Hyperliquid: ✅ Получены данные через SDK: {result}")
-                            return result
-                    except Exception as e:
-                        print(f"DEBUG Hyperliquid: Не удалось получить orderbook, используем приблизительные bid/ask: {e}")
-                    
-                    # Если не удалось получить orderbook, используем приблизительные значения
-                    result = {
-                        "price": price,
-                        "bid": price * 0.9999,
-                        "ask": price * 1.0001
-                    }
-                    print(f"DEBUG Hyperliquid: ✅ Получена цена через SDK (приблизительные bid/ask): {result}")
-                    return result
-                    
-                except (ValueError, TypeError) as e:
-                    print(f"DEBUG Hyperliquid: Ошибка преобразования значения '{value}': {e}")
+                    if price:
+                        found_key = key
+                        print(f"DEBUG Hyperliquid: ✅ Найден точный ключ '{key}' = {price}")
+                        break
+                except (ValueError, TypeError):
                     continue
         
-        print(f"DEBUG Hyperliquid: ⚠️ Символ '{symbol_upper}' не найден")
-        return None
+        # Если точного совпадения нет, ищем частичное (но с проверкой на разумность)
+        if price is None:
+            print(f"DEBUG Hyperliquid: Точного совпадения нет, ищем частичное для '{symbol_upper}'...")
+            for key, value in all_mids.items():
+                # Ищем ключ, который начинается с символа или содержит его как отдельное слово
+                key_upper = key.upper()
+                if (key_upper == symbol_upper or 
+                    key_upper.startswith(symbol_upper) and len(key_upper) <= len(symbol_upper) + 5):
+                    try:
+                        if isinstance(value, str):
+                            candidate_price = float(value)
+                        elif isinstance(value, (int, float)):
+                            candidate_price = float(value)
+                        else:
+                            continue
+                        
+                        # ПРОВЕРКА НА РАЗУМНОСТЬ: цена должна быть в разумных пределах
+                        # Для большинства криптовалют цена должна быть > 0.01 и < 1000000
+                        # Если цена слишком маленькая (< 0.1) или слишком большая (> 100000), это подозрительно
+                        if 0.1 <= candidate_price <= 1000000:
+                            price = candidate_price
+                            found_key = key
+                            print(f"DEBUG Hyperliquid: ✅ Найден ключ '{key}' = {price} (прошёл проверку на разумность)")
+                            break
+                        else:
+                            print(f"DEBUG Hyperliquid: ⚠️ Ключ '{key}' = {candidate_price} не прошёл проверку на разумность")
+                    except (ValueError, TypeError):
+                        continue
+        
+        if price is None:
+            print(f"DEBUG Hyperliquid: ⚠️ Символ '{symbol_upper}' не найден или цена не прошла проверку")
+            # Выводим первые несколько ключей для отладки
+            sample_keys = [k for k in list(all_mids.keys())[:20] if symbol_upper in k.upper()]
+            if sample_keys:
+                print(f"DEBUG Hyperliquid: Похожие ключи: {sample_keys}")
+            return None
+        
+        # Получаем bid/ask (упрощённо, так как orderbook может быть недоступен)
+        result = {
+            "price": price,
+            "bid": price * 0.9999,  # Приблизительный bid (на 0.01% ниже)
+            "ask": price * 1.0001   # Приблизительный ask (на 0.01% выше)
+        }
+        
+        print(f"DEBUG Hyperliquid: ✅ Получена цена через SDK: {result}")
+        return result
         
     except Exception as e:
         print(f"DEBUG Hyperliquid: ❌ ИСКЛЮЧЕНИЕ для {symbol}: {e}")
