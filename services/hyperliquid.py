@@ -49,6 +49,8 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
                                         "ask": price * 1.0001
                                     }
     except Exception as e:
-        print(f"Ошибка получения цены с Hyperliquid для {symbol}: {e}")
+        print(f"DEBUG Hyperliquid: ❌ Ошибка для {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
     
     return None
