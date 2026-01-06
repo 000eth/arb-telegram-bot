@@ -68,7 +68,6 @@ def register_message_handlers(dp: Dispatcher):
             f"- Минимальный спред: {s.min_spread}%\n"
             f"- Минимальный профит: {s.min_profit_usd}$\n"
             f"- Объём позиции: {s.position_size_usd}$\n"
-            f"- Плечо: x{s.leverage}\n"
             f"- Интервал проверки: {interval_text}\n"
             f"- Скан активен: {'Да' if s.scan_active else 'Нет'}\n"
             f"- Пауза уведомлений: {'Да' if s.paused else 'Нет'}"
@@ -95,6 +94,7 @@ def register_message_handlers(dp: Dispatcher):
         """Обработчик всех текстовых сообщений"""
         s = get_user_settings(message.from_user.id)
 
+        # Проверяем, есть ли pending_action
         if not s.pending_action:
             await message.answer(
                 "Я тебя не понял. Используй кнопки меню для навигации.",
@@ -114,11 +114,8 @@ def register_message_handlers(dp: Dispatcher):
             elif action == "profit":
                 await apply_min_profit(message, s, message.text)
             elif action == "position":
-                parts = message.text.split()
-                if len(parts) != 2:
-                    await message.answer("Нужно два числа через пробел. Пример: 1000 3")
-                    return
-                await apply_position(message, s, parts[0], parts[1])
+                # Теперь только объём, не нужно два числа
+                await apply_position(message, s, message.text)
             elif action == "interval":
                 await apply_interval(message, s, message.text)
             else:
@@ -131,9 +128,7 @@ def register_message_handlers(dp: Dispatcher):
                 f"Произошла ошибка при обработке. Попробуй ещё раз или используй кнопки меню.",
                 reply_markup=get_main_menu_reply_keyboard()
             )
+            # НЕ сбрасываем pending_action при ошибке, чтобы пользователь мог попробовать ещё раз
             return
 
-        if s.pending_action is None:
-            return
-        s.pending_action = None
-        await message.answer("Готово! Используй кнопки меню для дальнейшей настройки.", reply_markup=get_main_menu_reply_keyboard())
+        # pending_action сбрасывается внутри функций apply_* при успехе
