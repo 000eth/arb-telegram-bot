@@ -31,7 +31,7 @@ dp = Dispatcher()
 
 @dataclass
 class UserSettings:
-    coins: list[str] = field(default_factory=list)   # список монет/пар (позже сделаем)
+    coins: list[str] = field(default_factory=list)   # список монет/пар
     min_spread: float = 2.0                          # минимальный спред в %
     min_profit_usd: float = 10.0                     # минимальный профит в $
     sources: list[str] = field(default_factory=list) # источники (позже)
@@ -60,14 +60,28 @@ BTN_POSITION = "Объём и плечо"
 BTN_MIN_SPREAD = "Минимальный спред"
 BTN_MIN_PROFIT = "Минимальный профит"
 BTN_INTERVAL = "Интервал проверки"
+BTN_COINS = "Монеты"
 BTN_CANCEL = "Отмена"
 
 settings_keyboard = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text=BTN_COINS)],
         [KeyboardButton(text=BTN_POSITION)],
         [KeyboardButton(text=BTN_MIN_SPREAD)],
         [KeyboardButton(text=BTN_MIN_PROFIT)],
         [KeyboardButton(text=BTN_INTERVAL)],
+        [KeyboardButton(text=BTN_CANCEL)],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+)
+
+# Клавиатура для управления монетами
+coins_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Добавить монету")],
+        [KeyboardButton(text="Удалить монету")],
+        [KeyboardButton(text="Список монет")],
         [KeyboardButton(text=BTN_CANCEL)],
     ],
     resize_keyboard=True,
@@ -88,6 +102,7 @@ async def cmd_start(message: Message):
         "Основные команды:\n"
         "/help — список команд\n"
         "/settings — меню настроек с кнопками\n"
+        "/coins — управление монетами\n"
         "/pause и /resume — пауза уведомлений\n\n"
         "Попробуй: нажми /settings и выбери, что хочешь настроить."
     )
@@ -101,9 +116,13 @@ async def cmd_help(message: Message):
         "/start - приветственное сообщение\n"
         "/help - эта помощь\n"
         "/settings - меню настроек с кнопками\n"
+        "/coins - управление монетами\n"
         "/pause - поставить уведомления на паузу\n"
         "/resume - возобновить уведомления\n\n"
         "Через команды (альтернатива кнопкам):\n"
+        "/coins add <тикер> - добавить монету (пример: /coins add BTC)\n"
+        "/coins remove <тикер> - удалить монету (пример: /coins remove BTC)\n"
+        "/coins list - показать список монет\n"
         "/spread <число> - минимальный спред в %\n"
         "/minprofit <число> - минимальный профит в $\n"
         "/position <объём_в_$> <плечо> - объём и плечо\n"
@@ -147,6 +166,89 @@ async def cmd_resume(message: Message):
     await message.answer("Уведомления возобновлены.", reply_markup=ReplyKeyboardRemove())
 
 
+# ---------- Команды для монет ----------
+
+
+@dp.message(Command("coins"))
+async def cmd_coins(message: Message):
+    """
+    /coins [add|remove|list] [тикер]
+    """
+    s = get_user_settings(message.from_user.id)
+    parts = message.text.split()
+
+    if len(parts) == 1:
+        # Просто /coins - показываем меню
+        await show_coins_menu(message, s)
+        return
+
+    if len(parts) == 2:
+        if parts[1].lower() == "list":
+            await show_coins_list(message, s)
+            return
+        else:
+            await message.answer(
+                "Использование:\n"
+                "/coins - меню монет\n"
+                "/coins add <тикер> - добавить монету\n"
+                "/coins remove <тикер> - удалить монету\n"
+                "/coins list - список монет"
+            )
+            return
+
+    if len(parts) == 3:
+        action = parts[1].lower()
+        ticker = parts[2].upper()
+
+        if action == "add":
+            await add_coin(message, s, ticker)
+        elif action == "remove":
+            await remove_coin(message, s, ticker)
+        else:
+            await message.answer("Неизвестная команда. Используй: add, remove или list")
+        return
+
+
+async def show_coins_menu(message: Message, s: UserSettings):
+    """Показываем меню управления монетами"""
+    coins_text = ', '.join(s.coins) if s.coins else "пока не заданы"
+    text = (
+        f"Текущие монеты: {coins_text}\n\n"
+        "Выбери действие:"
+    )
+    await message.answer(text, reply_markup=coins_keyboard)
+
+
+async def show_coins_list(message: Message, s: UserSettings):
+    """Показываем список монет"""
+    if not s.coins:
+        await message.answer("Список монет пуст. Добавь монеты через /coins add <тикер> или через меню.")
+        return
+
+    text = f"Отслеживаемые монеты ({len(s.coins)}):\n" + "\n".join(f"- {coin}" for coin in s.coins)
+    await message.answer(text)
+
+
+async def add_coin(message: Message, s: UserSettings, ticker: str):
+    """Добавляем монету в список"""
+    if ticker in s.coins:
+        await message.answer(f"Монета {ticker} уже есть в списке.")
+        return
+
+    s.coins.append(ticker)
+    await message.answer(f"Монета {ticker} добавлена. Всего монет: {len(s.coins)}")
+
+
+async def remove_coin(message: Message, s: UserSettings, ticker: str):
+    """Удаляем монету из списка"""
+    if ticker not in s.coins:
+        await message.answer(f"Монеты {ticker} нет в списке.")
+        return
+
+    s.coins.remove(ticker)
+    await message.answer(f"Монета {ticker} удалена. Осталось монет: {len(s.coins)}")
+
+
 # ---------- Обработка нажатий на кнопки меню ----------
 
 
@@ -155,6 +257,45 @@ async def handle_cancel(message: Message):
     s = get_user_settings(message.from_user.id)
     s.pending_action = None
     await message.answer("Отменено. Настройки не изменены.", reply_markup=ReplyKeyboardRemove())
+
+
+@dp.message(Text(BTN_COINS))
+async def handle_btn_coins(message: Message):
+    s = get_user_settings(message.from_user.id)
+    await show_coins_menu(message, s)
+
+
+@dp.message(Text("Добавить монету"))
+async def handle_add_coin_btn(message: Message):
+    s = get_user_settings(message.from_user.id)
+    s.pending_action = "add_coin"
+    await message.answer(
+        "Введи тикер монеты (например: BTC, ETH, SOL).\n"
+        "Можно ввести несколько через пробел: BTC ETH SOL",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
+@dp.message(Text("Удалить монету"))
+async def handle_remove_coin_btn(message: Message):
+    s = get_user_settings(message.from_user.id)
+    if not s.coins:
+        await message.answer("Список монет пуст. Нечего удалять.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    s.pending_action = "remove_coin"
+    coins_text = ', '.join(s.coins)
+    await message.answer(
+        f"Текущие монеты: {coins_text}\n\n"
+        "Введи тикер монеты, которую хочешь удалить (например: BTC)",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
+@dp.message(Text("Список монет"))
+async def handle_list_coins_btn(message: Message):
+    s = get_user_settings(message.from_user.id)
+    await show_coins_list(message, s)
 
 
 @dp.message(Text(BTN_POSITION))
@@ -282,7 +423,11 @@ async def handle_free_text(message: Message):
 
     action = s.pending_action
 
-    if action == "min_spread":
+    if action == "add_coin":
+        await handle_add_coin_input(message, s, message.text)
+    elif action == "remove_coin":
+        await handle_remove_coin_input(message, s, message.text)
+    elif action == "min_spread":
         await apply_min_spread(message, s, message.text)
     elif action == "min_profit":
         await apply_min_profit(message, s, message.text)
@@ -305,6 +450,59 @@ async def handle_free_text(message: Message):
         return
     s.pending_action = None
     await message.answer("Готово. Можешь открыть /settings, чтобы проверить настройки.")
+
+
+# ---------- Обработка ввода монет ----------
+
+
+async def handle_add_coin_input(message: Message, s: UserSettings, raw_input: str):
+    """Обрабатываем ввод монет (может быть одна или несколько через пробел)"""
+    tickers = [t.strip().upper() for t in raw_input.split()]
+    
+    if not tickers:
+        await message.answer("Не получилось прочитать тикеры. Пример: BTC или BTC ETH SOL")
+        s.pending_action = "add_coin"
+        return
+
+    added = []
+    already_exists = []
+
+    for ticker in tickers:
+        if not ticker:
+            continue
+        if ticker in s.coins:
+            already_exists.append(ticker)
+        else:
+            s.coins.append(ticker)
+            added.append(ticker)
+
+    response_parts = []
+    if added:
+        response_parts.append(f"Добавлены монеты: {', '.join(added)}")
+    if already_exists:
+        response_parts.append(f"Уже есть в списке: {', '.join(already_exists)}")
+
+    s.pending_action = None
+    await message.answer("\n".join(response_parts) + f"\n\nВсего монет: {len(s.coins)}")
+
+
+async def handle_remove_coin_input(message: Message, s: UserSettings, raw_input: str):
+    """Обрабатываем удаление монеты"""
+    ticker = raw_input.strip().upper()
+
+    if not ticker:
+        await message.answer("Не получилось прочитать тикер. Пример: BTC")
+        s.pending_action = "remove_coin"
+        return
+
+    if ticker not in s.coins:
+        await message.answer(f"Монеты {ticker} нет в списке.")
+        s.pending_action = None
+        return
+
+    s.coins.remove(ticker)
+    s.pending_action = None
+    await message.answer(f"Монета {ticker} удалена. Осталось монет: {len(s.coins)}")
 
 
 # ---------- Функции применения настроек ----------
