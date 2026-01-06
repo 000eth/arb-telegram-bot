@@ -36,25 +36,22 @@ async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
     await message.answer(f"✅ Минимальный профит установлен: {s.min_profit_usd}$.", reply_markup=get_main_menu_reply_keyboard())
 
 
-async def apply_position(message: Message, s: UserSettings, raw_size: str, raw_lev: str):
+async def apply_position(message: Message, s: UserSettings, raw_value: str):
+    """Применяет объём позиции (без плеча)"""
     try:
-        size = float(raw_size.replace(",", "."))
-        leverage = float(raw_lev.replace(",", "."))
+        value = float(raw_value.replace(",", "."))
     except ValueError:
-        await message.answer("Не получилось прочитать объём и плечо. Пример: 1000 3")
+        await message.answer("Не получилось прочитать число. Пример: 1000")
         return
 
-    if size <= 0 or leverage <= 0:
-        await message.answer("Объём и плечо должны быть больше нуля.")
+    if value <= 0:
+        await message.answer("Объём должен быть больше нуля.")
         return
 
-    s.position_size_usd = size
-    s.leverage = leverage
+    s.position_size_usd = value
     s.pending_action = None
     await message.answer(
-        f"✅ Параметры позиции установлены:\n"
-        f"- Объём: {s.position_size_usd}$\n"
-        f"- Плечо: x{s.leverage}",
+        f"✅ Объём позиции установлен: {s.position_size_usd}$",
         reply_markup=get_main_menu_reply_keyboard()
     )
 
