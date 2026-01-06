@@ -29,8 +29,15 @@ def register_message_handlers(dp: Dispatcher):
         user_text = message.text or ""
         
         # ВАЖНО: Проверяем pending_action ПЕРВЫМ делом
-        print(f"DEBUG handle_all_messages: user_id={user_id}, text='{user_text}', pending_action='{s.pending_action}'")
-        print(f"DEBUG: Все pending_action в user_settings: {[(uid, us.pending_action) for uid, us in user_settings.items()]}")
+        print(f"DEBUG handle_all_messages: user_id={user_id}, text='{user_text}'")
+        print(f"DEBUG: s.pending_action = {s.pending_action}")
+        print(f"DEBUG: user_settings[{user_id}].pending_action = {user_settings[user_id].pending_action}")
+        print(f"DEBUG: id(s) = {id(s)}, id(user_settings[{user_id}]) = {id(user_settings[user_id])}")
+        
+        # Проверяем напрямую из словаря
+        if user_id in user_settings:
+            direct_pending = user_settings[user_id].pending_action
+            print(f"DEBUG: Прямая проверка user_settings[{user_id}].pending_action = {direct_pending}")
         
         if s.pending_action:
             action = s.pending_action
@@ -138,7 +145,7 @@ def register_message_handlers(dp: Dispatcher):
             return
         
         # Если ничего не подошло
-        print(f"DEBUG: ❌ Не распознано сообщение '{text}', pending_action='{s.pending_action}'")
+        print(f"DEBUG: ❌ Не распознано сообщение '{text}'")
         await message.answer(
             f"Я тебя не понял. Используй кнопки меню для навигации.\n\n"
             f"DEBUG: pending_action = {s.pending_action}",
