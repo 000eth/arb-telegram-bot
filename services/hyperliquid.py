@@ -1,30 +1,25 @@
 """
-Hyperliquid API - получение цен
-Документация: https://hyperliquid.gitbook.io/hyperliquid-docs/
+Hyperliquid API - получение цен с bid/ask
 """
 import aiohttp
-from typing import Optional
-
+from typing import Optional, Dict
 
 async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[float]:
+    """Получает цену (для обратной совместимости)"""
+    data = await get_price_data(session, symbol)
+    return data.get("price") if data else None
+
+
+async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optional[Dict[str, float]]:
     """
-    Получает цену с Hyperliquid (perp-DEX)
-    
-    Args:
-        session: aiohttp сессия
-        symbol: Тикер монеты (например, "BTC")
-    
-    Returns:
-        Цена в USDT или None при ошибке
+    Получает данные о цене с Hyperliquid
+    Возвращает: {"price": float, "bid": float, "ask": float} или None
     """
     try:
-        # Hyperliquid использует POST запросы
         url = "https://api.hyperliquid.xyz/info"
-        
         payload = {
             "type": "allMids"
         }
-        
         headers = {
             "Content-Type": "application/json"
         }
@@ -32,17 +27,27 @@ async def get_price(session: aiohttp.ClientSession, symbol: str) -> Optional[flo
         async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
             if response.status == 200:
                 data = await response.json()
-                # TODO: Реализовать парсинг ответа после проверки реального API
-                # Структура ответа может быть: {"BTC": 60000, "ETH": 3000, ...}
                 if isinstance(data, dict):
-                    # Пробуем найти символ
+                    # Ищем символ в ответе
+                    symbol_upper = symbol.upper()
                     for key, value in data.items():
-                        if symbol.upper() in key.upper():
+                        if symbol_upper in key.upper():
                             if isinstance(value, (int, float)):
-                                return float(value)
-                            elif isinstance(value, dict) and "mid" in value:
-                                return float(value["mid"])
-        
+                                price = float(value)
+                                # Для Hyperliquid используем цену как bid и ask (упрощённо)
+                                return {
+                                    "price": price,
+                                    "bid": price * 0.9999,  # Примерный bid (на 0.01% ниже)
+                                    "ask": price * 1.0001   # Примерный ask (на 0.01% выше)
+                                }
+                            elif isinstance(value, dict):
+                                if "mid" in value:
+                                    price = float(value["mid"])
+                                    return {
+                                        "price": price,
+                                        "bid": price * 0.9999,
+                                        "ask": price * 1.0001
+                                    }
     except Exception as e:
         print(f"Ошибка получения цены с Hyperliquid для {symbol}: {e}")
     
