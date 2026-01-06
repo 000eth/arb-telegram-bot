@@ -26,8 +26,8 @@ dp = Dispatcher()
 # ---------- Регистрация всех обработчиков ----------
 
 register_commands(dp)
-register_message_handlers(dp)
 register_callback_handlers(dp)
+register_message_handlers(dp)
 
 
 # ---------- Настройка Menu Button ----------
@@ -54,10 +54,6 @@ async def setup_menu_button():
 
 async def main():
     print("Бот запускается...")
-
-    # ВРЕМЕННО: тест Hibachi API
-    from test_hibachi_api import test_hibachi_api
-    await test_hibachi_api()
     
     await setup_menu_button()
     
