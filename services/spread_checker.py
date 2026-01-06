@@ -1,102 +1,18 @@
-"""
-Фоновая задача для проверки спредов
-"""
-import asyncio
-import aiohttp
-from datetime import datetime, timedelta
-
-from models import user_settings, last_notifications
-from config import ALL_EXCHANGES, ALL_COINS, MIN_NOTIFICATION_INTERVAL_MINUTES
-from services.price_fetcher import get_price_data_for_exchange
-from services.profit_calculator import calculate_profit_with_spread
-from keyboards import get_settings_keyboard
-
-
-async def send_spread_notification(
-    user_id: int,
-    coin: str,
-    prices: dict[str, dict],
-    spread_percent: float,
-    profit_data: dict,
-    long_exchange: str,
-    short_exchange: str,
-    settings,
-    bot_instance,
-):
-    """Отправляет уведомление с кликабельными ссылками"""
-    time_str = datetime.now().strftime("%H:%M:%S UTC")
-    
-    long_exchange_info = ALL_EXCHANGES.get(long_exchange, {})
-    short_exchange_info = ALL_EXCHANGES.get(short_exchange, {})
-    
-    long_url = long_exchange_info.get("url_template", "").format(symbol=coin)
-    short_url = short_exchange_info.get("url_template", "").format(symbol=coin)
-    
-    prices_text = "\n".join([
-        f"  • {exch}: {data.get('price', 0):.2f} USDT" 
-        for exch, data in prices.items()
-    ])
-    
-    text = (
-        f"🔔 Найден арбитраж!\n\n"
-        f"Монета: {coin}/USDT\n"
-        f"Спред: {spread_percent:.2f}%\n\n"
-        f"Цены на биржах:\n{prices_text}\n\n"
-        f"📈 ЛОНГ: [{long_exchange}]({long_url}) — {profit_data['long_entry_market']:.2f} USDT\n"
-        f"📉 ШОРТ: [{short_exchange}]({short_url}) — {profit_data['short_entry_market']:.2f} USDT\n\n"
-        f"💰 Профит при входе по МАРКЕТУ:\n"
-        f"  • Профит: {profit_data['market_profit']:.2f} $\n"
-        f"  • Комиссии: {profit_data['market_fees']:.2f} $\n\n"
-        f"💰 Профит при входе по ЛИМИТУ:\n"
-        f"  • Профит: {profit_data['limit_profit']:.2f} $\n"
-        f"  • Комиссии: {profit_data['limit_fees']:.2f} $\n\n"
-        f"Время: {time_str}"
-    )
-    
-    try:
-        await bot_instance.send_message(
-            chat_id=user_id,
-            text=text,
-            parse_mode="Markdown",
-            disable_web_page_preview=True
-        )
-        
-        if settings.menu_message_id:
-            try:
-                await bot_instance.edit_message_reply_markup(
-                    chat_id=user_id,
-                    message_id=settings.menu_message_id,
-                    reply_markup=get_settings_keyboard()
-                )
-            except:
-                pass
-                
-    except Exception as e:
-        print(f"Ошибка отправки уведомления пользователю {user_id}: {e}")
-
-
 async def check_spreads_task(bot_instance):
     """Фоновая задача для проверки спредов"""
     async with aiohttp.ClientSession() as session:
         while True:
             try:
                 for user_id, settings in user_settings.items():
+                    # ВАЖНО: Проверяем scan_active СРАЗУ, до всех остальных проверок
+                    if not settings.scan_active:
+                        # Пропускаем этого пользователя полностью
+                        continue
+                    
                     # ДИАГНОСТИКА: Проверяем настройки пользователя
                     print(f"\n=== Проверка пользователя {user_id} ===")
                     print(f"  scan_active: {settings.scan_active}")
                     print(f"  paused: {settings.paused}")
-                    print(f"  track_all_coins: {settings.track_all_coins}")
-                    print(f"  coins: {settings.coins}")
-                    print(f"  track_all_exchanges: {settings.track_all_exchanges}")
-                    print(f"  selected_exchanges: {settings.selected_exchanges}")
-                    print(f"  min_spread: {settings.min_spread}%")
-                    print(f"  min_profit_usd: {settings.min_profit_usd}$")
-                    print(f"  position_size_usd: {settings.position_size_usd}$")
-                    print(f"  leverage: {settings.leverage}x")
-                    
-                    if not settings.scan_active:
-                        print(f"  ⚠️ Скан НЕ активирован для пользователя {user_id}")
-                        continue
                     
                     if settings.paused:
                         print(f"  ⚠️ Уведомления на паузе для пользователя {user_id}")
@@ -126,9 +42,14 @@ async def check_spreads_task(bot_instance):
                     
                     # Проверяем первые несколько монет для диагностики
                     coins_checked = 0
-                    max_coins_to_check = min(5, len(coins_to_check))  # Проверяем первые 5 для диагностики
+                    max_coins_to_check = min(5, len(coins_to_check))
                     
                     for coin in coins_to_check[:max_coins_to_check]:
+                        # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: убеждаемся, что скан всё ещё активен
+                        if not settings.scan_active:
+                            print(f"  ⚠️ Скан был выключен во время проверки, останавливаем")
+                            break
+                        
                         coins_checked += 1
                         try:
                             print(f"\n  🔍 Проверка монеты {coin} ({coins_checked}/{max_coins_to_check})...")
@@ -136,9 +57,13 @@ async def check_spreads_task(bot_instance):
                             # Получаем данные с bid/ask
                             prices_data = {}
                             for exchange_name in exchanges_to_check:
+                                # ЕЩЁ ОДНА ПРОВЕРКА перед каждым запросом
+                                if not settings.scan_active:
+                                    print(f"  ⚠️ Скан выключен, прерываем получение цен")
+                                    break
+                                
                                 print(f"    📡 Запрос цены с {exchange_name}...")
                                 try:
-                                    # Добавляем таймаут для каждого запроса (максимум 3 секунды)
                                     data = await asyncio.wait_for(
                                         get_price_data_for_exchange(session, exchange_name, coin),
                                         timeout=3.0
@@ -149,15 +74,19 @@ async def check_spreads_task(bot_instance):
                                     else:
                                         print(f"    ❌ {exchange_name}: не удалось получить цену")
                                 except asyncio.TimeoutError:
-                                    print(f"    ⚠️ {exchange_name}: timeout (превышено 3 сек), пропускаем")
+                                    print(f"    ⚠️ {exchange_name}: timeout, пропускаем")
                                 except Exception as e:
                                     print(f"    ⚠️ {exchange_name}: ошибка {type(e).__name__}: {e}, пропускаем")
                                 
-                                # Задержка только для Hibachi (увеличена до 0.5 сек)
                                 if exchange_name.lower() == "hibachi":
                                     await asyncio.sleep(0.5)
                                 else:
                                     await asyncio.sleep(0.1)
+                            
+                            # ФИНАЛЬНАЯ ПРОВЕРКА перед отправкой уведомления
+                            if not settings.scan_active:
+                                print(f"  ⚠️ Скан выключен перед отправкой уведомления, пропускаем")
+                                continue
                             
                             if len(prices_data) < 2:
                                 print(f"    ⚠️ Получено цен только с {len(prices_data)} бирж (нужно минимум 2)")
@@ -184,7 +113,7 @@ async def check_spreads_task(bot_instance):
                                 print(f"    ⚠️ Спред {spread_percent:.2f}% меньше минимального {settings.min_spread}%")
                                 continue
                             
-                            # Рассчитываем профит с учётом bid/ask
+                            # Рассчитываем профит
                             profit_data = calculate_profit_with_spread(
                                 min_exchange,
                                 max_exchange,
@@ -209,6 +138,11 @@ async def check_spreads_task(bot_instance):
                                 if time_since_last < timedelta(minutes=MIN_NOTIFICATION_INTERVAL_MINUTES):
                                     print(f"    ⚠️ Последнее уведомление было {time_since_last.total_seconds():.0f} сек назад (минимум: {MIN_NOTIFICATION_INTERVAL_MINUTES} мин)")
                                     continue
+                            
+                            # ПОСЛЕДНЯЯ ПРОВЕРКА перед отправкой
+                            if not settings.scan_active:
+                                print(f"  ⚠️ Скан выключен в последний момент, НЕ отправляем уведомление")
+                                continue
                             
                             print(f"    🎉 ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ!")
                             await send_spread_notification(
