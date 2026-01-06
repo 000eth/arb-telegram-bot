@@ -22,13 +22,6 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
     """
     Получает данные о цене с Hibachi (perp-DEX)
     Возвращает: {"price": float, "bid": float, "ask": float} или None
-    
-    Args:
-        session: aiohttp сессия
-        symbol: Тикер монеты (например, "BTC")
-    
-    Returns:
-        Словарь с ценой, bid и ask или None при ошибке
     """
     try:
         cache_key = f"hibachi_{symbol}"
@@ -115,5 +108,7 @@ async def get_price_data(session: aiohttp.ClientSession, symbol: str) -> Optiona
         
     except Exception as e:
         print(f"DEBUG Hibachi: ❌ Ошибка для {symbol}: {e}")
+        import traceback
+        traceback.print_exc()
     
     return None
