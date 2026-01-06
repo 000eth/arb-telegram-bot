@@ -58,7 +58,7 @@ async def send_spread_notification(
             chat_id=user_id,
             text=text,
             parse_mode="Markdown",
-            disable_web_page_preview=False
+            disable_web_page_preview=True
         )
         
         if settings.menu_message_id:
