@@ -25,11 +25,19 @@ async def get_price_data_for_exchange(session: aiohttp.ClientSession, exchange_n
     """
     exchange_name_lower = exchange_name.lower()
     
+    print(f"DEBUG price_fetcher: Запрос к {exchange_name} для {symbol}")
+    
     try:
         if exchange_name_lower == "hibachi":
-            return await get_price_data_hibachi(session, symbol)
+            print(f"DEBUG price_fetcher: Вызываем get_price_data_hibachi для {symbol}")
+            result = await get_price_data_hibachi(session, symbol)
+            print(f"DEBUG price_fetcher: Hibachi вернул: {result}")
+            return result
         elif exchange_name_lower == "hyperliquid":
-            return await get_price_data_hyperliquid(session, symbol)
+            print(f"DEBUG price_fetcher: Вызываем get_price_data_hyperliquid для {symbol}")
+            result = await get_price_data_hyperliquid(session, symbol)
+            print(f"DEBUG price_fetcher: Hyperliquid вернул: {result}")
+            return result
         elif exchange_name_lower == "bybit":
             price = await get_price_bybit(session, symbol)
             if price:
@@ -47,8 +55,9 @@ async def get_price_data_for_exchange(session: aiohttp.ClientSession, exchange_n
             if price:
                 return {"price": price, "bid": price * 0.9999, "ask": price * 1.0001}
     except Exception as e:
-        print(f"DEBUG price_fetcher: ❌ Ошибка получения цены с {exchange_name} для {symbol}: {e}")
+        print(f"DEBUG price_fetcher: ❌ ИСКЛЮЧЕНИЕ при получении цены с {exchange_name} для {symbol}: {e}")
         import traceback
         traceback.print_exc()
     
+    print(f"DEBUG price_fetcher: ❌ Не удалось получить цену с {exchange_name} для {symbol}")
     return None
