@@ -7,7 +7,6 @@ import re
 
 async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
     try:
-        # Убираем все символы кроме цифр и точки/запятой
         cleaned = re.sub(r'[^\d.,]', '', raw_value)
         cleaned = cleaned.replace(',', '.')
         value = float(cleaned)
@@ -20,13 +19,13 @@ async def apply_min_spread(message: Message, s: UserSettings, raw_value: str):
         return
 
     s.min_spread = value
+    # Сбрасываем pending_action ПОСЛЕ успешной обработки
     s.pending_action = None
     await message.answer(f"✅ Минимальный спред установлен: {s.min_spread}%.", reply_markup=get_main_menu_reply_keyboard())
 
 
 async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
     try:
-        # Убираем все символы кроме цифр и точки/запятой
         cleaned = re.sub(r'[^\d.,]', '', raw_value)
         cleaned = cleaned.replace(',', '.')
         value = float(cleaned)
@@ -44,23 +43,15 @@ async def apply_min_profit(message: Message, s: UserSettings, raw_value: str):
 
 
 async def apply_position(message: Message, s: UserSettings, raw_value: str):
-    """Применяет объём позиции - понимает разные форматы: 20000, 20,000, 20.000, 20000$, 20,000$ и т.д."""
     try:
-        # Убираем все символы кроме цифр и точки/запятой (включая $, пробелы и т.д.)
         cleaned = re.sub(r'[^\d.,]', '', raw_value.strip())
-        # Заменяем запятую на точку (для десятичных дробей)
-        # Но если запятая используется как разделитель тысяч (20,000), убираем её
         if ',' in cleaned and '.' in cleaned:
-            # Есть и точка, и запятая - запятая это разделитель тысяч
             cleaned = cleaned.replace(',', '')
         elif ',' in cleaned:
-            # Только запятая - проверяем, разделитель тысяч или десятичная
             parts = cleaned.split(',')
             if len(parts) == 2 and len(parts[1]) <= 2:
-                # Похоже на десятичную дробь (20,5)
                 cleaned = cleaned.replace(',', '.')
             else:
-                # Похоже на разделитель тысяч (20,000)
                 cleaned = cleaned.replace(',', '')
         
         value = float(cleaned)
@@ -85,7 +76,6 @@ async def apply_position(message: Message, s: UserSettings, raw_value: str):
 
 async def apply_interval(message: Message, s: UserSettings, raw_value: str):
     try:
-        # Убираем все символы кроме цифр
         cleaned = re.sub(r'[^\d]', '', raw_value.strip())
         value = int(cleaned)
     except (ValueError, AttributeError):
