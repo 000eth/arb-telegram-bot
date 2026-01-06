@@ -59,11 +59,19 @@ from keyboards import (
 def register_callback_handlers(dp: Dispatcher):
     """Регистрирует обработчики callback-кнопок"""
     
+    async def safe_edit(callback: CallbackQuery, text: str, reply_markup=None):
+        """Безопасное редактирование сообщения - игнорирует ошибку 'message is not modified'"""
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup)
+        except Exception as e:
+            if "message is not modified" not in str(e).lower():
+                print(f"Ошибка редактирования сообщения: {e}")
+    
     @dp.callback_query(F.data == CALLBACK_MAIN_MENU)
     async def handle_main_menu(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         text = "Главное меню\n\nВыбери раздел:"
-        await callback.message.edit_text(text, reply_markup=get_settings_keyboard())
+        await safe_edit(callback, text, get_settings_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -72,7 +80,7 @@ def register_callback_handlers(dp: Dispatcher):
     async def handle_settings(callback: CallbackQuery):
         s = get_user_settings(callback.from_user.id)
         text = "⚙️ Настройки\n\nВыбери параметр для изменения:"
-        await callback.message.edit_text(text, reply_markup=get_settings_keyboard())
+        await safe_edit(callback, text, get_settings_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -89,7 +97,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Режим отслеживания: {mode_text}\n\n"
             f"Выбери действие:"
         )
-        await callback.message.edit_text(text, reply_markup=get_coins_keyboard())
+        await safe_edit(callback, text, get_coins_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -111,7 +119,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Текущие монеты: {', '.join(s.coins) if s.coins else 'пока не заданы'}\n\n"
             "Выбери действие:"
         )
-        await callback.message.edit_text(text, reply_markup=get_coins_selected_keyboard())
+        await safe_edit(callback, text, get_coins_selected_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -130,7 +138,7 @@ def register_callback_handlers(dp: Dispatcher):
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
             ]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await safe_edit(callback, text, keyboard)
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -145,7 +153,7 @@ def register_callback_handlers(dp: Dispatcher):
                     [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
                 ]
             )
-            await callback.message.edit_text(text, reply_markup=keyboard)
+            await safe_edit(callback, text, keyboard)
             s.menu_message_id = callback.message.message_id
             await callback.answer()
             return
@@ -162,7 +170,7 @@ def register_callback_handlers(dp: Dispatcher):
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS_SELECTED)],
             ]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await safe_edit(callback, text, keyboard)
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -182,7 +190,7 @@ def register_callback_handlers(dp: Dispatcher):
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_COINS)],
             ]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await safe_edit(callback, text, keyboard)
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -199,7 +207,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Режим: {exchanges_text}\n\n"
             f"Выбери действие:"
         )
-        await callback.message.edit_text(text, reply_markup=get_exchanges_keyboard())
+        await safe_edit(callback, text, get_exchanges_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -211,7 +219,7 @@ def register_callback_handlers(dp: Dispatcher):
             "✅ Отслеживать биржи\n\n"
             "Выбери биржи для отслеживания (зелёная галочка = выбрано):"
         )
-        await callback.message.edit_text(text, reply_markup=get_exchanges_select_keyboard(s.selected_exchanges))
+        await safe_edit(callback, text, get_exchanges_select_keyboard(s.selected_exchanges))
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -239,7 +247,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Статус: {'✅ Включено' if s.track_all_exchanges else '⚪ Выключено'}\n\n"
             "Если включено, будут отслеживаться все биржи (имеет приоритет над выбранными)."
         )
-        await callback.message.edit_text(text, reply_markup=get_exchanges_all_keyboard(s.track_all_exchanges))
+        await safe_edit(callback, text, get_exchanges_all_keyboard(s.track_all_exchanges))
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -289,7 +297,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Текущее значение: {s.position_size_usd}$\n\n"
             "Выбери быстрый вариант или введи вручную:"
         )
-        await callback.message.edit_text(text, reply_markup=get_position_keyboard())
+        await safe_edit(callback, text, get_position_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -329,7 +337,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Текущее значение: {s.min_spread}%\n\n"
             "Выбери быстрый вариант или введи вручную:"
         )
-        await callback.message.edit_text(text, reply_markup=get_spread_keyboard())
+        await safe_edit(callback, text, get_spread_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -377,7 +385,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Текущее значение: {s.min_profit_usd}$\n\n"
             "Выбери быстрый вариант или введи вручную:"
         )
-        await callback.message.edit_text(text, reply_markup=get_profit_keyboard())
+        await safe_edit(callback, text, get_profit_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -434,7 +442,7 @@ def register_callback_handlers(dp: Dispatcher):
             f"Текущее значение: {interval_text}\n\n"
             "Выбери быстрый вариант или введи вручную:"
         )
-        await callback.message.edit_text(text, reply_markup=get_interval_keyboard())
+        await safe_edit(callback, text, get_interval_keyboard())
         s.menu_message_id = callback.message.message_id
         await callback.answer()
     
@@ -545,23 +553,11 @@ def register_callback_handlers(dp: Dispatcher):
             text = f"Неизвестное действие: {action_type}"
             s.pending_action = None
         
-        # Ещё раз проверяем после установки текста
-        print(f"DEBUG: После установки текста - s.pending_action = {s.pending_action}")
-        
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=CALLBACK_SETTINGS)],
             ]
         )
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await safe_edit(callback, text, keyboard)
         s.menu_message_id = callback.message.message_id
-        
-        # Финальная проверка перед ответом
-        print(f"DEBUG: Перед callback.answer() - s.pending_action = {s.pending_action}")
-        if callback.from_user.id in user_settings:
-            print(f"DEBUG: Перед callback.answer() - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
-        
         await callback.answer()
-        
-        # Проверка после ответа
-        print(f"DEBUG: После callback.answer() - s.pending_action = {s.pending_action}")
