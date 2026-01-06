@@ -1,7 +1,7 @@
 from aiogram import Dispatcher, F
 from aiogram.types import Message
 
-from models import get_user_settings
+from models import get_user_settings, user_settings
 from keyboards import (
     get_main_menu_reply_keyboard,
     get_settings_keyboard,
@@ -24,52 +24,60 @@ def register_message_handlers(dp: Dispatcher):
     @dp.message()
     async def handle_all_messages(message: Message):
         """Универсальный обработчик - проверяет pending_action первым"""
-        s = get_user_settings(message.from_user.id)
+        user_id = message.from_user.id
+        s = get_user_settings(user_id)
         user_text = message.text or ""
         
-        print(f"DEBUG handle_all_messages: user_id={message.from_user.id}, text='{user_text}', pending_action='{s.pending_action}'")
+        # ВАЖНО: Проверяем pending_action ПЕРВЫМ делом
+        print(f"DEBUG handle_all_messages: user_id={user_id}, text='{user_text}', pending_action='{s.pending_action}'")
+        print(f"DEBUG: Все pending_action в user_settings: {[(uid, us.pending_action) for uid, us in user_settings.items()]}")
         
-        # ПЕРВЫМ делом проверяем pending_action (ручной ввод)
         if s.pending_action:
             action = s.pending_action
-            print(f"DEBUG: Обрабатываем pending_action = '{action}' для текста '{user_text}'")
+            print(f"DEBUG: ✅ Найден pending_action = '{action}' для текста '{user_text}'")
             
             try:
                 if action == "add_coin":
+                    print(f"DEBUG: Обрабатываем add_coin")
                     await handle_add_coin_input(message, s, user_text)
                     return
                 elif action == "remove_coin":
+                    print(f"DEBUG: Обрабатываем remove_coin")
                     await handle_remove_coin_input(message, s, user_text)
                     return
                 elif action == "spread":
+                    print(f"DEBUG: Обрабатываем spread")
                     await apply_min_spread(message, s, user_text)
                     return
                 elif action == "profit":
+                    print(f"DEBUG: Обрабатываем profit")
                     await apply_min_profit(message, s, user_text)
                     return
                 elif action == "position":
-                    print(f"DEBUG: Вызываем apply_position с текстом '{user_text}'")
+                    print(f"DEBUG: Обрабатываем position с текстом '{user_text}'")
                     await apply_position(message, s, user_text)
                     return
                 elif action == "interval":
+                    print(f"DEBUG: Обрабатываем interval")
                     await apply_interval(message, s, user_text)
                     return
                 else:
-                    print(f"DEBUG: Неизвестное действие: {action}")
+                    print(f"DEBUG: ❌ Неизвестное действие: {action}")
                     await message.answer("Неизвестное действие. Попробуй ещё раз через меню.")
                     s.pending_action = None
                     return
             except Exception as e:
-                print(f"DEBUG: ИСКЛЮЧЕНИЕ при обработке действия {action}: {e}")
+                print(f"DEBUG: ❌ ИСКЛЮЧЕНИЕ при обработке действия {action}: {e}")
                 import traceback
                 traceback.print_exc()
                 await message.answer(
-                    f"Произошла ошибка при обработке. Попробуй ещё раз или используй кнопки меню.",
+                    f"Произошла ошибка при обработке: {e}\nПопробуй ещё раз или используй кнопки меню.",
                     reply_markup=get_main_menu_reply_keyboard()
                 )
                 return
         
         # Если нет pending_action, проверяем кнопки
+        print(f"DEBUG: ⚠️ НЕТ pending_action, проверяем кнопки для текста '{user_text}'")
         text = user_text
         
         if text == "⚙️ Настройки":
@@ -130,8 +138,9 @@ def register_message_handlers(dp: Dispatcher):
             return
         
         # Если ничего не подошло
-        print(f"DEBUG: Не распознано сообщение '{text}', pending_action='{s.pending_action}'")
+        print(f"DEBUG: ❌ Не распознано сообщение '{text}', pending_action='{s.pending_action}'")
         await message.answer(
-            "Я тебя не понял. Используй кнопки меню для навигации.",
+            f"Я тебя не понял. Используй кнопки меню для навигации.\n\n"
+            f"DEBUG: pending_action = {s.pending_action}",
             reply_markup=get_main_menu_reply_keyboard()
         )
