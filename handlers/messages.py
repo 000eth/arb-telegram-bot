@@ -21,37 +21,38 @@ from handlers.settings_handlers import (
 def register_message_handlers(dp: Dispatcher):
     """Регистрирует обработчики текстовых сообщений"""
     
-    # ВАЖНО: Обработчик свободного текста должен быть ПЕРВЫМ
-    # и проверять pending_action ДО проверки кнопок
-    
     @dp.message()
     async def handle_all_messages(message: Message):
         """Универсальный обработчик - проверяет pending_action первым"""
         s = get_user_settings(message.from_user.id)
+        user_text = message.text or ""
+        
+        print(f"DEBUG handle_all_messages: user_id={message.from_user.id}, text='{user_text}', pending_action='{s.pending_action}'")
         
         # ПЕРВЫМ делом проверяем pending_action (ручной ввод)
         if s.pending_action:
             action = s.pending_action
-            print(f"DEBUG: pending_action = {action}, текст = {message.text}")  # Отладка
+            print(f"DEBUG: Обрабатываем pending_action = '{action}' для текста '{user_text}'")
             
             try:
                 if action == "add_coin":
-                    await handle_add_coin_input(message, s, message.text)
+                    await handle_add_coin_input(message, s, user_text)
                     return
                 elif action == "remove_coin":
-                    await handle_remove_coin_input(message, s, message.text)
+                    await handle_remove_coin_input(message, s, user_text)
                     return
                 elif action == "spread":
-                    await apply_min_spread(message, s, message.text)
+                    await apply_min_spread(message, s, user_text)
                     return
                 elif action == "profit":
-                    await apply_min_profit(message, s, message.text)
+                    await apply_min_profit(message, s, user_text)
                     return
                 elif action == "position":
-                    await apply_position(message, s, message.text)
+                    print(f"DEBUG: Вызываем apply_position с текстом '{user_text}'")
+                    await apply_position(message, s, user_text)
                     return
                 elif action == "interval":
-                    await apply_interval(message, s, message.text)
+                    await apply_interval(message, s, user_text)
                     return
                 else:
                     print(f"DEBUG: Неизвестное действие: {action}")
@@ -59,7 +60,9 @@ def register_message_handlers(dp: Dispatcher):
                     s.pending_action = None
                     return
             except Exception as e:
-                print(f"DEBUG: Ошибка обработки действия {action}: {e}")
+                print(f"DEBUG: ИСКЛЮЧЕНИЕ при обработке действия {action}: {e}")
+                import traceback
+                traceback.print_exc()
                 await message.answer(
                     f"Произошла ошибка при обработке. Попробуй ещё раз или используй кнопки меню.",
                     reply_markup=get_main_menu_reply_keyboard()
@@ -67,7 +70,7 @@ def register_message_handlers(dp: Dispatcher):
                 return
         
         # Если нет pending_action, проверяем кнопки
-        text = message.text
+        text = user_text
         
         if text == "⚙️ Настройки":
             s = get_user_settings(message.from_user.id)
@@ -127,6 +130,7 @@ def register_message_handlers(dp: Dispatcher):
             return
         
         # Если ничего не подошло
+        print(f"DEBUG: Не распознано сообщение '{text}', pending_action='{s.pending_action}'")
         await message.answer(
             "Я тебя не понял. Используй кнопки меню для навигации.",
             reply_markup=get_main_menu_reply_keyboard()
