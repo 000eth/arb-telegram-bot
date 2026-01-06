@@ -1,3 +1,4 @@
+from models import get_user_settings, user_settings
 from aiogram import Dispatcher, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -488,10 +489,22 @@ def register_callback_handlers(dp: Dispatcher):
         action_type = callback.data.split("_", 1)[1]
         
         # ВАЖНО: Устанавливаем pending_action ПЕРЕД отправкой сообщения
-        s.pending_action = action_type
-        print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{action_type}'")
+        # Исправляем название: должно быть 'position', а не 'input_position'
+        if action_type == "position":
+            s.pending_action = "position"  # Используем 'position', а не 'input_position'
+        elif action_type == "spread":
+            s.pending_action = "spread"
+        elif action_type == "profit":
+            s.pending_action = "profit"
+        elif action_type == "interval":
+            s.pending_action = "interval"
+        else:
+            s.pending_action = None
+        
+        print(f"DEBUG handle_manual_input: user_id={callback.from_user.id}, установлен pending_action='{s.pending_action}'")
         print(f"DEBUG: Проверка - s.pending_action = {s.pending_action}")
-        print(f"DEBUG: Проверка - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
+        if callback.from_user.id in user_settings:
+            print(f"DEBUG: Проверка - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
         
         if action_type == "position":
             text = (
@@ -535,7 +548,8 @@ def register_callback_handlers(dp: Dispatcher):
         
         # Финальная проверка перед ответом
         print(f"DEBUG: Перед callback.answer() - s.pending_action = {s.pending_action}")
-        print(f"DEBUG: Перед callback.answer() - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
+        if callback.from_user.id in user_settings:
+            print(f"DEBUG: Перед callback.answer() - user_settings[{callback.from_user.id}].pending_action = {user_settings[callback.from_user.id].pending_action}")
         
         await callback.answer()
         
